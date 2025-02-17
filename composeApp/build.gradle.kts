@@ -93,6 +93,12 @@ android {
     }
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
 dependencies {
     debugImplementation(compose.uiTooling)
     implementation("androidx.core:core-ktx:1.12.0")

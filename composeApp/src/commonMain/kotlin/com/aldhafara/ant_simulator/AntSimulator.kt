@@ -36,7 +36,9 @@ fun AntSimulator() {
     val cellSize = 5.dp
     val gridWidth = gridSize * cellSize.value
 
-    val ant = remember { mutableStateOf(Ant(Offset(gridWidth / 2, gridWidth / 2), Offset(0f, -1f), 30f)) }
+    val foodSource = Target(Offset((gridSize -5) * cellSize.value, (gridSize -5) * cellSize.value), TargetType.FOOD)
+    val nest = Target(Offset((5) * cellSize.value, (5) * cellSize.value), TargetType.NEST)
+    val ant = remember { mutableStateOf(Ant(Offset(gridWidth / 2, gridWidth / 2), Offset(0f, -1f), 30f, foodSource)) }
     var isRunning by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -45,8 +47,7 @@ fun AntSimulator() {
             coroutineScope.launch {
                 while (isRunning) {
                     delay(10) //Speed
-                    val updatedPosition = updateAntPosition(ant.value, cellSize.value, gridSize)
-                    ant.value = ant.value.copy(position = updatedPosition)
+                    ant.value = updateAntPosition(ant.value, cellSize.value, gridSize, nest, foodSource)
                 }
             }
         }
@@ -59,7 +60,7 @@ fun AntSimulator() {
     ) {
         AntSimulationControls(isRunning) { isRunning = !isRunning }
         Spacer(modifier = Modifier.height(16.dp))
-        AntSimulationCanvas(gridSize, cellSize, gridWidth, ant.value)
+        AntSimulationCanvas(gridSize, cellSize, gridWidth, ant.value, foodSource.position, nest.position)
     }
 }
 
@@ -75,7 +76,9 @@ fun AntSimulationCanvas(
     gridSize: Int,
     cellSize: Dp,
     gridWidth: Float,
-    ant: Ant
+    ant: Ant,
+    initialTarget: Offset,
+    nest: Offset
 ) {
     Box(
         modifier = Modifier
@@ -86,6 +89,8 @@ fun AntSimulationCanvas(
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawGrid(gridSize, cellSize)
             drawAnt(cellSize, ant.position, ant.direction)
+            drawTarget(cellSize, initialTarget)
+            drawNest(cellSize, nest)
         }
     }
 }

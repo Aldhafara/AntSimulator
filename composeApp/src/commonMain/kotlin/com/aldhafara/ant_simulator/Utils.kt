@@ -3,30 +3,68 @@ package com.aldhafara.ant_simulator
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
-fun updateAntPosition(ant: Ant, cellSize: Float, gridSize: Int, angleRange: Float = 10f): Offset {
+fun updateAntPosition(ant: Ant, cellSize: Float, gridSize: Int, nest: Target, foodSource: Target): Ant {
     val minBound = cellSize / 2
     val maxBound = gridSize * cellSize - cellSize / 2
 
     val potentialNewPosition = ant.position + (ant.direction * cellSize)
 
     return if (!isNearEdge(potentialNewPosition, minBound, maxBound)) {
-        val randomAngle = ant.currentAngle + (Random.nextFloat() * angleRange * 2 - angleRange)
+        val newTarget = if (reachedTarget(ant.position, ant.currentTarget.position, cellSize)) {
+            if (ant.currentTarget.type == TargetType.FOOD) {
+                nest
+            } else {
+                foodSource
+            }
+        } else {
+            ant.currentTarget
+        }
 
-        ant.direction = angleToDirection(randomAngle)
-        ant.currentAngle = randomAngle
+        val newDirection = calculateDirection(ant.position, newTarget.position, ant.direction, ant.angleRange, ant.sightRange)
+        val newAngle = directionToAngle(newDirection)
 
-        ant.position + (ant.direction * cellSize)
+        val newPosition = ant.position + (newDirection * cellSize)
+
+        ant.copy(
+            position = newPosition,
+            direction = newDirection,
+            currentAngle = newAngle,
+            currentTarget = newTarget
+        )
     } else {
         val reflectedDirection = reflectDirection(ant.direction, potentialNewPosition, minBound, maxBound)
+        val newPosition = ant.position + (reflectedDirection * cellSize)
 
-        ant.direction = reflectedDirection
-        ant.currentAngle = directionToAngle(reflectedDirection)
+        ant.copy(
+            position = newPosition.coerceIn(minBound, maxBound),
+            direction = reflectedDirection,
+            currentAngle = directionToAngle(reflectedDirection)
+        )
+    }
+}
 
-        ant.position + (reflectedDirection * cellSize)
-    }.coerceIn(minBound, maxBound)
+fun reachedTarget(position: Offset, targetPosition: Offset, threshold: Float): Boolean {
+    return sqrt((position.x - targetPosition.x).pow(2) + (position.y - targetPosition.y).pow(2)) <= threshold
+}
+
+fun calculateDirection(from: Offset, to: Offset, antDirection: Offset, angleRange: Float, antSightRange: Float): Offset {
+    if (calculateDistance(from, to) > antSightRange) {
+        val randomAngle = directionToAngle(antDirection) + (Random.nextFloat() * angleRange * 2 - angleRange)
+        return angleToDirection(randomAngle)
+    }
+    val angle = atan2(to.y - from.y, to.x - from.x)
+    return Offset(cos(angle), sin(angle))
+}
+
+fun calculateDistance(from: Offset, to: Offset): Float {
+    val deltaX = to.x - from.x
+    val deltaY = to.y - from.y
+    return sqrt(deltaX * deltaX + deltaY * deltaY)
 }
 
 fun isNearEdge(position: Offset, minBound: Float, maxBound: Float, threshold: Float = 5f): Boolean {

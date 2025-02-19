@@ -24,6 +24,16 @@ fun DrawScope.drawAnt(cellSize: Dp, antPosition: Offset, direction: Offset) {
     drawDirectionLine(antPosition, direction, circleRadius)
 }
 
+fun DrawScope.drawTarget(cellSize: Dp, position: Offset) {
+    val circleRadius = cellSize.value
+    drawCircle(Color(0xFF005700), radius = circleRadius, center = position)
+}
+
+fun DrawScope.drawNest(cellSize: Dp, position: Offset) {
+    val circleRadius = cellSize.value
+    drawCircle(Color.Red, radius = circleRadius, center = position)
+}
+
 private fun DrawScope.drawDirectionLine(
     antPosition: Offset,
     direction: Offset,
@@ -32,5 +42,5 @@ private fun DrawScope.drawDirectionLine(
     val stickLength = 30f
     val lineStart = antPosition + (direction * circleRadius)
     val lineEnd = lineStart + (direction * stickLength)
-    drawLine(Color(0xFF005700), lineStart, lineEnd, strokeWidth = 2f)
+    drawLine(Color.DarkGray, lineStart, lineEnd, strokeWidth = 2f)
 }

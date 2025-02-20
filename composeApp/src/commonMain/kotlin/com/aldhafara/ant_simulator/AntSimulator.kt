@@ -34,7 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun antSimulator() {
+fun AntSimulator() {
     val gridSize = 100
     val cellSize = 5.dp
     val gridWidth = gridSize * cellSize.value

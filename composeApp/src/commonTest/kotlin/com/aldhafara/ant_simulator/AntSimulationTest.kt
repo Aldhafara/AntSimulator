@@ -1,20 +1,19 @@
 package com.aldhafara.ant_simulator
 
 import androidx.compose.ui.geometry.Offset
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
 
 class AntSimulationTest {
 
     @Test
-    fun `isNearEdge detects when ant is near the edge`() {
+    fun `should detect when ant is near the edge`() {
         val gridSize = 10
         val cellSize = 10f
         val minBound = cellSize / 2
@@ -28,15 +27,15 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `directionToAngle converts direction vector to angle correctly`() {
+    fun `should convert direction vector to angle correctly`() {
         assertEquals(0f, directionToAngle(Offset(1f, 0f)), 0.01f)
         assertEquals(90f, directionToAngle(Offset(0f, 1f)), 0.01f)
         assertEquals(180f, directionToAngle(Offset(-1f, 0f)), 0.01f)
-        assertEquals(-90f, directionToAngle(Offset(0f, -1f)), 0.01f)
+        assertEquals(270f, directionToAngle(Offset(0f, -1f)), 0.01f)
     }
 
     @Test
-    fun `reflectDirection correctly reflects from boundaries`() {
+    fun `should reflect direction correctly from boundaries`() {
         val minBound = 0f
         val maxBound = 100f
 
@@ -47,13 +46,13 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `reflect reflects vector correctly`() {
+    fun `should reflect vector correctly`() {
         assertEquals(Offset(-1f, 1f), reflect(Offset(1f, 1f), Offset(1f, 0f)))
         assertEquals(Offset(1f, -1f), reflect(Offset(1f, 1f), Offset(0f, 1f)))
     }
 
     @Test
-    fun `angleToDirection converts angle to direction vector correctly`() {
+    fun `should convert angle to direction vector correctly`() {
         val angle = 45f
         val expectedDirection = Offset(0.707f, 0.707f)
         val result = angleToDirection(angle)
@@ -65,9 +64,9 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `updateAntPosition moves ant correctly`() {
-        val currentTarget = Target(Offset((100f), (100f)), TargetType.FOOD)
-        val nest = Target(Offset((1f), (1f)), TargetType.NEST)
+    fun `should update ant position correctly`() {
+        val currentTarget = Target(Offset(100f, 100f), TargetType.FOOD)
+        val nest = Target(Offset(1f, 1f), TargetType.NEST)
         val ant = Ant(Offset(50f, 50f), Offset(1f, 0f), 0f, currentTarget)
         val gridSize = 10
         val cellSize = 10f
@@ -78,7 +77,7 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `test reachedTarget - within threshold`() {
+    fun `should detect when target is within threshold range`() {
         val position = Offset(0f, 0f)
         val targetPosition = Offset(3f, 4f)
         val threshold = 5f
@@ -89,7 +88,7 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `test reachedTarget - beyond threshold`() {
+    fun `should detect when target is beyond threshold range`() {
         val position = Offset(0f, 0f)
         val targetPosition = Offset(3f, 4f)
         val threshold = 4f
@@ -100,65 +99,172 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `test calculateDirection - within sight range`() {
+    fun `should move directly toward target when already aligned`() {
         val from = Offset(0f, 0f)
-        val to = Offset(3f, 4f)
+        val to = Offset(5f, 0f)
         val antDirection = Offset(1f, 0f)
-        val angleRange = 30f
-        val antSightRange = 10f
+        val fieldViewAngleRange = 60f
+        val maxTurnAngle = 30f
+        val antSightDistance = 10f
 
-        val result = calculateDirection(from, to, antDirection, angleRange, antSightRange)
+        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
 
-        val expectedDirection = Offset(3f, 4f).let {
-            val angle = atan2(it.y - from.y, it.x - from.x)
-            Offset(cos(angle), sin(angle))
-        }
-
-        assertEquals(expectedDirection.x, result.x, 0.01f)
-        assertEquals(expectedDirection.y, result.y, 0.01f)
+        assertEquals(1f, result.x, 0.01f)
+        assertEquals(0f, result.y, 0.01f)
     }
 
     @Test
-    fun `test calculateDirection - out of sight range`() {
+    fun `should turn right correctly when target is at the right edge of view range`() {
         val from = Offset(0f, 0f)
-        val to = Offset(15f, 15f)
-        val antDirection = Offset(1f, 0f)
-        val angleRange = 30f
-        val antSightRange = 10f
+        val to = Offset(3f, -4f)
+        val antDirection = Offset(-1f, 0f)
+        val fieldViewAngleRange = 90f
+        val maxTurnAngle = 45f
+        val antSightDistance = 10f
 
-        val result = calculateDirection(from, to, antDirection, angleRange, antSightRange)
+        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
+
+        assertTrue(result.x > -1f)
+    }
+
+    @Test
+    fun `should ignore target when it is outside field of view`() {
+        val from = Offset(0f, 0f)
+        val to = Offset(-10f, 10f)
+        val antDirection = Offset(1f, 0f)
+        val fieldViewAngleRange = 45f
+        val maxTurnAngle = 30f
+        val antSightDistance = 15f
+
+        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
+
+        assertNotEquals(-1f, result.x)
+    }
+
+    @Test
+    fun `should move in random direction when no target is visible`() {
+        val from = Offset(0f, 0f)
+        val to = Offset(30f, 30f)
+        val antDirection = Offset(1f, 0f)
+        val fieldViewAngleRange = 60f
+        val maxTurnAngle = 45f
+        val antSightDistance = 10f
+
+        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
 
         assertNotEquals(0f, result.x)
         assertNotEquals(0f, result.y)
     }
 
     @Test
-    fun `test calculateDistance - positive distance`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(3f, 4f)
+    fun `should calculate positive angle difference`() {
+        val result = angleDifference(30f, 60f)
+        assertEquals(30f, result)
+    }
 
-        val result = calculateDistance(from, to)
+    @ParameterizedTest
+    @CsvSource(
+        "0, 349, 20, 350",
+        "0, 350, 20, 350",
+        "0, 351, 20, 351",
+        "0, 0, 20, 0",
+        "0, 9, 20, 9",
+        "0, 10, 20, 10",
+        "0, 11, 20, 10",
 
-        assertEquals(5f, result, 0.01f)
+        "0, 90, 20, 10",
+        "90, 90, 20, 90",
+        "45, 90, 20, 55",
+        "180, 90, 20, 170",
+        "270, 90, 20, 280"
+    )
+    fun `should calculate offset and turn`(
+        antAngle: Float,
+        targetAngle: Float,
+        maxTurnAngle: Float,
+        expectedAngle: Float
+    ) {
+        val result = offset(antAngle, targetAngle, maxTurnAngle)
+        val actualAngle = directionToAngle(result)
+        assertEquals(expectedAngle, actualAngle, 0.01f)
     }
 
     @Test
-    fun `test calculateDistance - zero distance`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(0f, 0f)
-
-        val result = calculateDistance(from, to)
-
-        assertEquals(0f, result, 0.01f)
+    fun `should calculate negative angle difference`() {
+        val result = angleDifference(60f, 30f)
+        assertEquals(-30f, result)
     }
 
     @Test
-    fun `test calculateDistance - negative distance values`() {
-        val from = Offset(-3f, -4f)
-        val to = Offset(0f, 0f)
+    fun `should handle angle difference over 180 degrees`() {
+        val result = angleDifference(350f, 10f)
+        assertEquals(20f, result)
+    }
 
-        val result = calculateDistance(from, to)
+    @Test
+    fun `should handle angle difference under -180 degrees`() {
+        val result = angleDifference(10f, 350f)
+        assertEquals(-20f, result)
+    }
 
-        assertEquals(5f, result, 0.01f)
+    @Test
+    fun `should normalize 180-degree difference`() {
+        val result = angleDifference(150f, 330f)
+        assertEquals(180f, result)
+    }
+
+    @Test
+    fun `should return zero for identical angles`() {
+        val result = angleDifference(45f, 45f)
+        assertEquals(0f, result)
+    }
+
+    @Test
+    fun `should return zero for 0 and 360 degrees`() {
+        val result = angleDifference(0f, 360f)
+        assertEquals(0f, result)
+    }
+
+    @Test
+    fun `should return zero for 180 and -180 degrees`() {
+        val result = angleDifference(180f, -180f)
+        assertEquals(0f, result)
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "90, 90, 60, true",
+        "100, 90, 60, true",
+        "80, 90, 60, true",
+        "130, 90, 60, false",
+        "50, 90, 60, false",
+        "60, 90, 60, true",
+        "120, 90, 60, true",
+        "355, 10, 30, true",
+        "330, 10, 30, false",
+        "360, 180, 360, true",
+        "5, 350, 30, true",
+        "320, 350, 30, false",
+
+        "0, 180, 90, false",
+        "0, 350, 90, true",
+
+        "10, 4, 10, false",
+        "10, 5, 10, true",
+        "10, 15, 10, true",
+        "10, 16, 10, false",
+    )
+    fun `angleIsInRange should behave correctly`(
+        angle: Float,
+        previousDirection: Float,
+        fieldViewAngleRange: Float,
+        expected: Boolean
+    ) {
+        val result = angleIsInRange(angle, previousDirection, fieldViewAngleRange)
+        if (expected) {
+            assertTrue(result)
+        } else {
+            assertFalse(result)
+        }
     }
 }

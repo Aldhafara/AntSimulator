@@ -1,9 +1,11 @@
 package com.aldhafara.ant_simulator
 
 import androidx.compose.ui.geometry.Offset
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -15,17 +17,20 @@ fun updateAntPosition(ant: Ant, cellSize: Float, gridSize: Int, nest: Target, fo
     val potentialNewPosition = ant.position + (ant.direction * cellSize)
 
     return if (!isNearEdge(potentialNewPosition, minBound, maxBound)) {
-        val newTarget = if (reachedTarget(ant.position, ant.currentTarget.position, cellSize)) {
-            if (ant.currentTarget.type == TargetType.FOOD) {
-                nest
-            } else {
-                foodSource
-            }
+        val newTarget = if (reachedTarget(ant.position, ant.currentTarget.position, cellSize * 2)) {
+            if (ant.currentTarget.type == TargetType.FOOD) nest else foodSource
         } else {
             ant.currentTarget
         }
 
-        val newDirection = calculateDirection(ant.position, newTarget.position, ant.direction, ant.angleRange, ant.sightRange)
+        val newDirection = calculateDirection(
+            ant.position,
+            newTarget.position,
+            ant.direction,
+            ant.fieldViewAngleRange,
+            ant.maxTurnAngle,
+            ant.sightDistance
+        )
         val newAngle = directionToAngle(newDirection)
 
         val newPosition = ant.position + (newDirection * cellSize)
@@ -52,19 +57,78 @@ fun reachedTarget(position: Offset, targetPosition: Offset, threshold: Float): B
     return sqrt((position.x - targetPosition.x).pow(2) + (position.y - targetPosition.y).pow(2)) <= threshold
 }
 
-fun calculateDirection(from: Offset, to: Offset, antDirection: Offset, angleRange: Float, antSightRange: Float): Offset {
-    if (calculateDistance(from, to) > antSightRange) {
-        val randomAngle = directionToAngle(antDirection) + (Random.nextFloat() * angleRange * 2 - angleRange)
-        return angleToDirection(randomAngle)
+fun calculateDirection(
+    antPosition: Offset,
+    targetPosition: Offset,
+    antDirection: Offset,
+    fieldViewAngleRange: Float,
+    maxTurnAngle: Float,
+    antSightDistance: Float
+): Offset {
+    val antAngle = directionToAngle(antDirection)
+
+    if (reachedTarget(antPosition, targetPosition, antSightDistance)) {
+
+        val targetAngleRad = atan2(targetPosition.y - antPosition.y, targetPosition.x - antPosition.x)
+        val targetAngle = Math.toDegrees(targetAngleRad.toDouble()).toFloat()
+        val normalizedTargetAngle = normalizeAngle(targetAngle)
+
+        if (angleIsInRange(normalizedTargetAngle, antAngle, fieldViewAngleRange)) {
+            return offset(antAngle, normalizedTargetAngle, maxTurnAngle)
+        }
     }
-    val angle = atan2(to.y - from.y, to.x - from.x)
-    return Offset(cos(angle), sin(angle))
+
+    return getRandomDirectionInRange(antDirection, maxTurnAngle)
 }
 
-fun calculateDistance(from: Offset, to: Offset): Float {
-    val deltaX = to.x - from.x
-    val deltaY = to.y - from.y
-    return sqrt(deltaX * deltaX + deltaY * deltaY)
+fun offset(
+    antAngle: Float,
+    targetAngle: Float,
+    maxTurnAngle: Float
+): Offset {
+    val angleDiff = angleDifference(antAngle, targetAngle)
+
+    if (abs(angleDiff) <= (maxTurnAngle / 2)) {
+        return Offset(
+            cos(Math.toRadians(targetAngle.toDouble())).toFloat(),
+            sin(Math.toRadians(targetAngle.toDouble())).toFloat()
+        )
+    } else {
+        val newAngle = antAngle + sign(angleDiff) * (maxTurnAngle / 2)
+        return Offset(
+            cos(Math.toRadians(newAngle.toDouble())).toFloat(),
+            sin(Math.toRadians(newAngle.toDouble())).toFloat()
+        )
+    }
+}
+
+fun angleDifference(angle1: Float, angle2: Float): Float {
+    var diff = normalizeAngle(angle2 - angle1)
+    if (diff > 180) diff -= 360
+    return diff
+}
+
+private fun getRandomDirectionInRange(
+    antDirection: Offset,
+    angleRange: Float
+): Offset {
+    val baseAngle = directionToAngle(antDirection)
+    val randomOffset = Random.nextFloat() * angleRange * 2 - angleRange
+    val randomAngle = normalizeAngle(baseAngle + randomOffset)
+
+    return angleToDirection(randomAngle)
+}
+
+fun angleIsInRange(angle: Float, previousDirection: Float, fieldViewAngleRange: Float): Boolean {
+    val halfRange = fieldViewAngleRange / 2
+    val minAngle = normalizeAngle(previousDirection - halfRange)
+    val maxAngle = normalizeAngle(previousDirection + halfRange)
+
+    return if (minAngle < maxAngle) {
+        angle in minAngle..maxAngle
+    } else {
+        angle in minAngle..360F || angle in 0f..maxAngle
+    }
 }
 
 fun isNearEdge(position: Offset, minBound: Float, maxBound: Float, threshold: Float = 5f): Boolean {
@@ -72,7 +136,12 @@ fun isNearEdge(position: Offset, minBound: Float, maxBound: Float, threshold: Fl
 }
 
 fun directionToAngle(direction: Offset): Float {
-    return Math.toDegrees(atan2(direction.y.toDouble(), direction.x.toDouble())).toFloat()
+    val angle = Math.toDegrees(atan2(direction.y.toDouble(), direction.x.toDouble())).toFloat()
+    return normalizeAngle(angle)
+}
+
+fun normalizeAngle(angle: Float): Float {
+    return (angle + 360) % 360
 }
 
 fun reflectDirection(direction: Offset, position: Offset, minBound: Float, maxBound: Float): Offset {
@@ -82,8 +151,7 @@ fun reflectDirection(direction: Offset, position: Offset, minBound: Float, maxBo
     if (position.y <= minBound || position.y >= maxBound) {
         normal = Offset(0f, if (position.y <= minBound) 1f else -1f)
         reflectedDirection = reflect(direction, normal)
-    }
-    else if (position.x <= minBound || position.x >= maxBound) {
+    } else if (position.x <= minBound || position.x >= maxBound) {
         normal = Offset(if (position.x <= minBound) 1f else -1f, 0f)
         reflectedDirection = reflect(direction, normal)
     } else {
@@ -104,8 +172,10 @@ fun reflect(direction: Offset, normal: Offset): Offset {
 
 fun angleToDirection(angle: Float): Offset {
     val angleInRadians = Math.toRadians(angle.toDouble()).toFloat()
-    return Offset(cos(angleInRadians), sin(angleInRadians))
+    return getOffsetFromAngle(angleInRadians)
 }
+
+private fun getOffsetFromAngle(targetAngle: Float) = Offset(cos(targetAngle), sin(targetAngle))
 
 fun Offset.coerceIn(minBound: Float, maxBound: Float): Offset {
     val clampedX = x.coerceIn(minBound, maxBound)

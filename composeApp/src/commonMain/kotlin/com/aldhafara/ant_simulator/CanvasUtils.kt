@@ -34,6 +34,16 @@ fun DrawScope.drawNest(cellSize: Dp, position: Offset) {
     drawCircle(Color.Red, radius = circleRadius, center = position)
 }
 
+fun DrawScope.drawPheromones(pheromones: List<Pheromone>) {
+    pheromones.forEach {
+        drawCircle(
+            color = Color.Magenta.copy(alpha = it.strength),
+            radius = 3f,
+            center = it.position
+        )
+    }
+}
+
 private fun DrawScope.drawDirectionLine(
     antPosition: Offset,
     direction: Offset,

@@ -8,4 +8,8 @@ data class Ant(
     var currentAngle: Float,
     val currentTarget: Target,
     var angleRange: Float = 10f,
-    var sightRange: Float = 100f)
+    var sightRange: Float = 100f,
+    val pheromoneInterval: Int = 10
+) {
+    fun reactToPheromones(pheromones: List<Pheromone>){}
+}

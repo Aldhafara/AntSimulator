@@ -12,6 +12,4 @@ data class Ant(
     var sightDistance: Float = 50f,
     val pheromoneInterval: Long = 50,
     var lastPheromoneTime: Long = 0
-) {
-    fun reactToPheromones(pheromones: List<Pheromone>){}
-}
+)

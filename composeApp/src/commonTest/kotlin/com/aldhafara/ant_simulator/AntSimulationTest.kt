@@ -4,6 +4,8 @@ import androidx.compose.ui.geometry.Offset
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -71,7 +73,7 @@ class AntSimulationTest {
         val gridSize = 10
         val cellSize = 10f
 
-        val newPosition = updateAntPosition(ant, cellSize, gridSize, nest, currentTarget)
+        val newPosition = updateAntPosition(ant, cellSize, gridSize, nest, currentTarget, emptyList())
 
         assertNotEquals(ant.position, newPosition)
     }
@@ -96,64 +98,6 @@ class AntSimulationTest {
         val result = reachedTarget(position, targetPosition, threshold)
 
         assertFalse(result)
-    }
-
-    @Test
-    fun `should move directly toward target when already aligned`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(5f, 0f)
-        val antDirection = Offset(1f, 0f)
-        val fieldViewAngleRange = 60f
-        val maxTurnAngle = 30f
-        val antSightDistance = 10f
-
-        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
-
-        assertEquals(1f, result.x, 0.01f)
-        assertEquals(0f, result.y, 0.01f)
-    }
-
-    @Test
-    fun `should turn right correctly when target is at the right edge of view range`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(3f, -4f)
-        val antDirection = Offset(-1f, 0f)
-        val fieldViewAngleRange = 90f
-        val maxTurnAngle = 45f
-        val antSightDistance = 10f
-
-        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
-
-        assertTrue(result.x > -1f)
-    }
-
-    @Test
-    fun `should ignore target when it is outside field of view`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(-10f, 10f)
-        val antDirection = Offset(1f, 0f)
-        val fieldViewAngleRange = 45f
-        val maxTurnAngle = 30f
-        val antSightDistance = 15f
-
-        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
-
-        assertNotEquals(-1f, result.x)
-    }
-
-    @Test
-    fun `should move in random direction when no target is visible`() {
-        val from = Offset(0f, 0f)
-        val to = Offset(30f, 30f)
-        val antDirection = Offset(1f, 0f)
-        val fieldViewAngleRange = 60f
-        val maxTurnAngle = 45f
-        val antSightDistance = 10f
-
-        val result = calculateDirection(from, to, antDirection, fieldViewAngleRange, maxTurnAngle, antSightDistance)
-
-        assertNotEquals(0f, result.x)
-        assertNotEquals(0f, result.y)
     }
 
     @Test
@@ -266,5 +210,140 @@ class AntSimulationTest {
         } else {
             assertFalse(result)
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "5, 5, 5, 5, 0",
+        "0, 0, 10, 0, 10",
+        "0, 0, 0, 10, 10",
+        "0, 0, 3, 4, 5",
+        "-3, -4, 0, 0, 5",
+        "1, 2, 4, 6, 5"
+    )
+    fun `calculateDistance should return correct value`(
+        x1: Float, y1: Float, x2: Float, y2: Float, expectedDistance: Float
+    ) {
+        val position = Offset(x1, y1)
+        val target = Offset(x2, y2)
+        val actualDistance = calculateDistance(position, target)
+        assertEquals(expectedDistance, actualDistance, 1e-6f)
+    }
+
+    @Test
+    fun `direction to pheromone with both negative X and Y should normalize correctly`() {
+        val pheromonePosition = Offset(-5f, -5f)
+        val result = directionToPheromone(pheromonePosition)
+        assertEquals(Offset(-1f, -1f), result)
+    }
+
+    @Test
+    fun `direction to pheromone on negative X and positive Y axis should be correct`() {
+        val pheromonePosition = Offset(-2f, 10f)
+        val result = directionToPheromone(pheromonePosition)
+        assertEquals(Offset(-0.2f, 1f), result)
+    }
+
+    @Test
+    fun `analyzePheromones should return empty when no pheromones are in range`() {
+        val position = Offset(0f, 0f)
+        val direction = Offset(1f, 0f)
+        val fieldViewAngleRange = 90f
+        val sightDistance = 10f
+        val pheromones = listOf(
+            Pheromone(Offset(20f, 0f), 5f, System.currentTimeMillis()),
+            Pheromone(Offset(0f, 20f), 5f, System.currentTimeMillis())
+        )
+
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+
+        assertNull(result.strongest)
+        assertNull(result.weakest)
+        assertNull(result.closest)
+        assertNull(result.farthest)
+    }
+
+    @Test
+    fun `analyzePheromones should return the only pheromone within range`() {
+        val position = Offset(0f, 0f)
+        val direction = Offset(1f, 0f)
+        val fieldViewAngleRange = 90f
+        val sightDistance = 10f
+        val pheromones = listOf(
+            Pheromone(Offset(5f, 0f), 5f, System.currentTimeMillis())
+        )
+
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+
+        assertNotNull(result.strongest)
+        assertEquals(Offset(5f, 0f), result.strongest)
+        assertEquals(result.weakest, result.strongest)
+        assertEquals(result.closest, result.strongest)
+        assertEquals(result.farthest, result.strongest)
+    }
+
+    @Test
+    fun `analyzePheromones should return the strongest and weakest pheromones when multiple are within range`() {
+        val position = Offset(0f, 0f)
+        val direction = Offset(1f, 0f)
+        val fieldViewAngleRange = 90f
+        val sightDistance = 10f
+        val pheromones = listOf(
+            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis()),
+            Pheromone(Offset(7f, 0f), 10f, System.currentTimeMillis()),
+            Pheromone(Offset(9f, 0f), 2f, System.currentTimeMillis())
+        )
+
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+
+        assertNotNull(result.strongest)
+        assertEquals(Offset(7f, 0f), result.strongest)
+
+        assertNotNull(result.weakest)
+        assertEquals(Offset(9f, 0f), result.weakest)
+
+        assertNotNull(result.closest)
+        assertEquals(Offset(3f, 0f), result.closest)
+
+        assertNotNull(result.farthest)
+        assertEquals(Offset(9f, 0f), result.farthest)
+    }
+
+    @Test
+    fun `analyzePheromones should exclude pheromones out of the field of view`() {
+        val position = Offset(0f, 0f)
+        val direction = Offset(1f, 0f)
+        val fieldViewAngleRange = 45f
+        val sightDistance = 10f
+        val pheromones = listOf(
+            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis()),
+            Pheromone(Offset(0f, 40f), 5f, System.currentTimeMillis()),
+            Pheromone(Offset(-3f, 0f), 5f, System.currentTimeMillis())
+        )
+
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+
+        assertNotNull(result.closest)
+        assertEquals(Offset(3f, 0f), result.closest)
+
+        assertEquals(result.closest, result.weakest)
+        assertEquals(result.closest, result.farthest)
+        assertEquals(result.closest, result.strongest)
+    }
+
+    @Test
+    fun `analyzePheromones should handle pheromones exactly at the sight distance limit`() {
+        val position = Offset(0f, 0f)
+        val direction = Offset(1f, 0f)
+        val fieldViewAngleRange = 90f
+        val sightDistance = 10f
+        val pheromones = listOf(
+            Pheromone(Offset(10f, 0f), 5f, System.currentTimeMillis())
+        )
+
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+
+        assertNotNull(result.closest)
+        assertEquals(Offset(10f, 0f), result.closest)
     }
 }

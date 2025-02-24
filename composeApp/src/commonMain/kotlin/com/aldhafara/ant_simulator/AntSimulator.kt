@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 @Composable
 fun AntSimulator() {
@@ -44,7 +45,7 @@ fun AntSimulator() {
     val nest = Target(Offset(5 * cellSize.value, 5 * cellSize.value), TargetType.NEST)
 
     val pheromoneTrail = remember { PheromoneTrail() }
-    val ant = remember { mutableStateOf(Ant(nest.position, Offset(0f, -1f), 30f, foodSource)) }
+    val ant = remember { mutableStateOf(Ant(nest.position, getRandomDirection(), 30f, foodSource)) }
     var isRunning by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -60,7 +61,14 @@ fun AntSimulator() {
                     delay(10)
                     pheromoneTrail.decay()
                     val previousTarget = ant.value.currentTarget.type
-                    ant.value = updateAntPosition(ant.value, cellSize.value, gridSize, nest, foodSource)
+                    ant.value = updateAntPosition(
+                        ant.value,
+                        cellSize.value,
+                        gridSize,
+                        nest,
+                        foodSource,
+                        pheromoneTrail.getPheromones()
+                    )
                     if (previousTarget == TargetType.NEST) {
                         val currentTime = System.currentTimeMillis()
                         if (currentTime - ant.value.lastPheromoneTime >= ant.value.pheromoneInterval) {
@@ -68,8 +76,6 @@ fun AntSimulator() {
                             ant.value.lastPheromoneTime = currentTime
                         }
                     }
-
-                    ant.value.reactToPheromones(pheromoneTrail.getPheromones())
 
                     val updated = stats.updateStatistics(ant.value.currentTarget.type, previousTarget)
                     if (updated) {
@@ -101,12 +107,22 @@ fun AntSimulator() {
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            antSimulationCanvas(gridSize, cellSize, gridWidth, ant.value, foodSource.position, nest.position, pheromoneTrail)
+            antSimulationCanvas(
+                gridSize,
+                cellSize,
+                gridWidth,
+                ant.value,
+                foodSource.position,
+                nest.position,
+                pheromoneTrail
+            )
             Spacer(modifier = Modifier.width(16.dp))
             travelTimeHistogram(histogramState, stats.getAvgTravelTime(), binSize)
         }
     }
 }
+
+private fun getRandomDirection() = Offset(Random.nextFloat() * 2 - 1, Random.nextFloat() * 2 - 1)
 
 @Composable
 fun antSimulationControlsAndStatistics(
@@ -126,8 +142,10 @@ fun antSimulationControlsAndStatistics(
             Text("Trips: $tripsCount")
         }
 
-        Button(onClick = onToggle,
-            modifier = Modifier.width(250.dp)) {
+        Button(
+            onClick = onToggle,
+            modifier = Modifier.width(250.dp)
+        ) {
             Text(if (isRunning) "Pause" else "Start Simulation")
         }
 
@@ -156,10 +174,10 @@ fun antSimulationCanvas(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawGrid(gridSize, cellSize)
+            drawPheromones(pheromoneTrail.getPheromones())
             drawAnt(cellSize, ant.position, ant.direction, ant.sightDistance, ant.fieldViewAngleRange)
             drawTarget(cellSize, initialTarget)
             drawNest(cellSize, nest)
-            drawPheromones(pheromoneTrail.getPheromones())
         }
     }
 }

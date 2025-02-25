@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.geometry.Size
-import java.lang.Math.atan2
+import kotlin.math.atan2
 
 fun DrawScope.drawGrid(gridSize: Int, cellSize: Dp) {
     for (i in 0 until gridSize) {
@@ -44,7 +44,7 @@ fun DrawScope.drawNest(cellSize: Dp, position: Offset) {
 fun DrawScope.drawPheromones(pheromones: List<Pheromone>) {
     pheromones.forEach {
         drawCircle(
-            color = Color.Magenta.copy(alpha = it.strength),
+            color = Color(0xFF53BB41).copy(alpha = it.strength),
             radius = 3f,
             center = it.position
         )

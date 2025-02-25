@@ -8,14 +8,13 @@ import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.ZonedDateTime
+import kotlin.math.abs
 
 class AntSimulationStatsTest {
 
-    private val systemClock = Clock.systemDefaultZone()
-    private val fixedStartTime = ZonedDateTime.of(2025, 1, 1, 12, 0, 0, 0, ZoneOffset.UTC)
-    private val fixedClock = Clock.offset(systemClock, Duration.between(Instant.now(), fixedStartTime.toInstant()))
+    private val fixedStartTime = Instant.parse("2025-01-01T12:00:00Z")
+    private val baseClock = Clock.systemUTC()
+    private val fixedClock = Clock.offset(baseClock, Duration.between(baseClock.instant(), fixedStartTime))
 
     private var stats = AntSimulationStats(clock = fixedClock)
 
@@ -29,8 +28,8 @@ class AntSimulationStatsTest {
         val initialTrips = stats.getTripsCount()
         val initialFood = stats.getFoodDelivered()
 
-        stats.updateStatistics(TargetType.FOOD, TargetType.NEST)
-        stats.updateStatistics(TargetType.NEST, TargetType.FOOD)
+        stats.updateStatistics(TargetType.FOOD, TargetType.NEST, Instant.now(fixedClock))
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock))
 
         assertEquals(initialTrips + 2, stats.getTripsCount())
         assertEquals(initialFood + 1, stats.getFoodDelivered())
@@ -44,22 +43,23 @@ class AntSimulationStatsTest {
         pauseStartTime.isAccessible = true
         val actualPauseStartTime = pauseStartTime.get(stats) as Instant
 
-        assertTrue(Duration.between(actualPauseStartTime, fixedClock.instant()).toMillis() in 0..10)
+        assertTrue(Duration.between(actualPauseStartTime, Instant.now(fixedClock)).toMillis() in 0..10)
     }
 
     @Test
     fun `onPause and onResume should track pause time correctly`() {
-        stats.updateStatistics(TargetType.NEST, TargetType.FOOD)
-        Thread.sleep(5)
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock).minusMillis(2200))
+
         stats.onPause()
         Thread.sleep(500)
         stats.onResume()
 
-        stats.updateStatistics(TargetType.FOOD, TargetType.NEST)
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock).minusMillis(500))
 
-        val tripTime = stats.getTotalTravelTime()
+        val histogram = stats.getHistogram(10)
 
-        assertTrue(tripTime in 0..20)
+        assertTrue(histogram.contains(0))
+        assertTrue(histogram.contains(2200L))
     }
 
     @Test
@@ -76,22 +76,17 @@ class AntSimulationStatsTest {
 
     @Test
     fun `getAvgTravelTime should return correct average`() {
-        stats.updateStatistics(TargetType.FOOD, TargetType.NEST)
-        Thread.sleep(50)
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock).minusMillis(100))
+        stats.updateStatistics(TargetType.FOOD, TargetType.NEST, Instant.now(fixedClock).minusMillis(200))
 
-        stats.updateStatistics(TargetType.NEST, TargetType.FOOD)
-
-        val avgTime = stats.getAvgTravelTime()
-        assertTrue(avgTime > 0)
+        assertTrue(abs(150L - stats.getAvgTravelTime()) in 0..5)
     }
 
     @Test
     fun `getHistogram should return correct binning`() {
-        Thread.sleep(150) // First trip: 150ms
-        stats.updateStatistics(TargetType.FOOD, TargetType.NEST)
+        stats.updateStatistics(TargetType.FOOD, TargetType.NEST, Instant.now(fixedClock).minusMillis(250))
 
-        Thread.sleep(250) // Second trip: 250ms
-        stats.updateStatistics(TargetType.NEST, TargetType.FOOD)
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock).minusMillis(150))
 
         val binSize = 100
         val histogram = stats.getHistogram(binSize)
@@ -105,11 +100,9 @@ class AntSimulationStatsTest {
 
     @Test
     fun `getHistogram should include empty bins`() {
-        Thread.sleep(150) // First trip: 150ms
-        stats.updateStatistics(TargetType.FOOD, TargetType.NEST)
+        stats.updateStatistics(TargetType.FOOD, TargetType.NEST, Instant.now(fixedClock).minusMillis(150))
 
-        Thread.sleep(1250) // Second trip: 1250ms
-        stats.updateStatistics(TargetType.NEST, TargetType.FOOD)
+        stats.updateStatistics(TargetType.NEST, TargetType.FOOD, Instant.now(fixedClock).minusMillis(1250))
 
         val binSize = 100
         val histogram = stats.getHistogram(binSize)

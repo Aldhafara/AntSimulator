@@ -19,74 +19,67 @@ fun updateAntPosition(
     foodSource: Target,
     pheromones: List<Pheromone>
 ): Ant {
-    val chance = 45f
+    val chance = 25f
     val minBound = cellSize / 2
     val maxBound = gridSize * cellSize - cellSize / 2
 
     val potentialNewPosition = ant.position + (ant.direction * cellSize)
+    val newHistory = (ant.directionHistory + ant.currentAngle).takeLast(25)
 
-    return if (!isNearEdge(potentialNewPosition, minBound, maxBound)) {
-        val newTarget =
-            if (reachedTarget(ant.position, ant.currentTarget.position, cellSize * 2)) {
-                if (ant.currentTarget.type == TargetType.FOOD) nest else foodSource
-            } else {
-                ant.currentTarget
-            }
+    val randomDirection = getRandomDirectionInRange(ant.direction, ant.maxTurnAngle)
 
-        val newDirection: Offset
+    if (!isNearEdge(potentialNewPosition, minBound, maxBound)) {
+        val newTarget = if (reachedTarget(ant.position, ant.currentTarget.position, cellSize * 2)) {
+            if (ant.currentTarget.type == TargetType.FOOD) nest else foodSource
+        } else ant.currentTarget
+
         val pheromoneInfo = analyzePheromones(
-            ant.position,
-            ant.direction,
-            ant.fieldViewAngleRange,
-            ant.sightDistance,
-            pheromones
+            ant.position, ant.direction, ant.fieldViewAngleRange, ant.sightDistance, pheromones
         )
 
         val antAngle = directionToAngle(ant.direction)
+        val targetPosition = if (ant.currentTarget.type == TargetType.FOOD) foodSource.position else nest.position
+        val targetInSight = isTargetInSight(ant.position, targetPosition, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
 
-        val targetInSight = when (ant.currentTarget.type) {
-            TargetType.FOOD -> isTargetInSight(ant.position, foodSource.position, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
-            TargetType.NEST -> isTargetInSight(ant.position, nest.position, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
-        }
-        if (targetInSight) {
-            newDirection = offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
-        } else {
-            newDirection = if (pheromoneInfo.hasAnyValue()) {
-                if (Random.nextFloat() < chance / 100) {
-                    getRandomDirectionInRange(ant.direction, ant.maxTurnAngle)
-                } else if (pheromoneInfo.farthest != null) {
-                    directionToPheromone(pheromoneInfo.farthest)
-                } else if (pheromoneInfo.strongest != null) {
-                    directionToPheromone(pheromoneInfo.strongest)
-                } else if (pheromoneInfo.closest != null) {
-                    directionToPheromone(pheromoneInfo.closest)
-                } else {
-                    pheromoneInfo.weakest?.let { directionToPheromone(it) }!!
+        val newDirection = when {
+            targetInSight -> offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
+            pheromoneInfo.hasAnyValue() && Random.nextFloat() >= chance / 100 -> {
+                when {
+                    pheromoneInfo.farthest != null -> directionToPheromone(pheromoneInfo.farthest)
+                    pheromoneInfo.strongest != null -> directionToPheromone(pheromoneInfo.strongest)
+                    pheromoneInfo.closest != null -> directionToPheromone(pheromoneInfo.closest)
+                    else -> pheromoneInfo.weakest?.let { directionToPheromone(it) } ?: randomDirection
                 }
-            } else {
-                getRandomDirectionInRange(ant.direction, ant.maxTurnAngle)
             }
+            else -> randomDirection
         }
 
-        val newAngle = directionToAngle(newDirection)
-
-        val newPosition = ant.position + (newDirection * cellSize)
-
-        ant.copy(
-            position = newPosition,
+        return ant.copy(
+            position = ant.position + (newDirection * cellSize),
+            directionHistory = newHistory,
             direction = newDirection,
-            currentAngle = newAngle,
+            currentAngle = directionToAngle(newDirection),
             currentTarget = newTarget
         )
     } else {
-        val reflectedDirection = reflectDirection(ant.direction, potentialNewPosition, minBound, maxBound)
-        val newPosition = ant.position + (reflectedDirection * cellSize)
+        val reflectedDirection = if (isStuck(ant.directionHistory)) randomDirection
+        else reflectDirection(ant.direction, potentialNewPosition, minBound, maxBound)
 
-        ant.copy(
-            position = newPosition.coerceIn(minBound, maxBound),
+        return ant.copy(
+            position = (ant.position + (reflectedDirection * cellSize)).coerceIn(minBound, maxBound),
+            directionHistory = newHistory,
             direction = reflectedDirection,
             currentAngle = directionToAngle(reflectedDirection)
         )
+    }
+}
+
+fun isStuck(directionHistory: List<Float>, tolerance: Float = 0.75f): Boolean {
+    val averageDirection = directionHistory.average().toFloat()
+    val criticalAngles = listOf(0f, 90f, 180f, 270f, 360f)
+
+    return criticalAngles.any { angle ->
+        abs(averageDirection - angle) <= tolerance
     }
 }
 

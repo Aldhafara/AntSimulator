@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -32,6 +33,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Clock
+import java.time.Instant
+import kotlin.math.max
 import kotlin.random.Random
 
 @Composable
@@ -40,17 +44,27 @@ fun AntSimulator() {
     val cellSize = 5.dp
     val gridWidth = gridSize * cellSize.value
     val binSize = 1000
+    val clock: Clock = Clock.systemDefaultZone()
 
     val foodSource = Target(Offset((gridSize - 5) * cellSize.value, (gridSize - 5) * cellSize.value), TargetType.FOOD)
     val nest = Target(Offset(5 * cellSize.value, 5 * cellSize.value), TargetType.NEST)
 
     val pheromoneTrail = remember { PheromoneTrail() }
-    val ant = remember { mutableStateOf(Ant(nest.position, getRandomDirection(), 30f, foodSource)) }
+
+    val numberOfAnts = 25
+    val ants = remember { mutableStateListOf<Ant>() }
+
     var isRunning by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     val stats = remember { AntSimulationStats() }
     var histogramState by remember { mutableStateOf(stats.getHistogram(binSize)) }
+
+    LaunchedEffect(Unit) {
+        repeat(numberOfAnts) {
+            ants.add(Ant(nest.position, getRandomDirection(), 30f, foodSource))
+        }
+    }
 
     LaunchedEffect(isRunning) {
         if (isRunning) {
@@ -60,26 +74,33 @@ fun AntSimulator() {
                 while (isRunning) {
                     delay(10)
                     pheromoneTrail.decay()
-                    val previousTarget = ant.value.currentTarget.type
-                    ant.value = updateAntPosition(
-                        ant.value,
-                        cellSize.value,
-                        gridSize,
-                        nest,
-                        foodSource,
-                        pheromoneTrail.getPheromones()
-                    )
-                    if (previousTarget == TargetType.NEST) {
-                        val currentTime = System.currentTimeMillis()
-                        if (currentTime - ant.value.lastPheromoneTime >= ant.value.pheromoneInterval) {
-                            pheromoneTrail.addPheromone(ant.value.position, currentTime)
-                            ant.value.lastPheromoneTime = currentTime
-                        }
-                    }
 
-                    val updated = stats.updateStatistics(ant.value.currentTarget.type, previousTarget)
-                    if (updated) {
-                        histogramState = stats.getHistogram(binSize)
+                    ants.forEachIndexed { index, ant ->
+                        val previousTarget = ants[index].currentTarget.type
+                        ants[index] = updateAntPosition(
+                            ant,
+                            cellSize.value,
+                            gridSize,
+                            nest,
+                            foodSource,
+                            pheromoneTrail.getPheromones()
+                        )
+                        if (previousTarget == TargetType.NEST) {
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - ant.lastPheromoneTime >= ant.pheromoneInterval) {
+                                pheromoneTrail.addPheromone(ant.position, currentTime)
+                                ants[index] = ant.copy(lastPheromoneTime = currentTime)
+                            }
+                        }
+                        val updated = stats.updateStatistics(
+                            ants[index].currentTarget.type,
+                            previousTarget,
+                            ants[index].tripStartTime
+                        )
+                        if (updated) {
+                            ants[index].tripStartTime = Instant.now(clock)
+                            histogramState = stats.getHistogram(binSize)
+                        }
                     }
                 }
             }
@@ -98,7 +119,7 @@ fun AntSimulator() {
             isRunning,
             stats.getFoodDelivered(),
             stats.getTripsCount(),
-            stats.getTotalTravelTime()
+            stats.getAvgTravelTime()
         ) { isRunning = !isRunning }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -111,13 +132,13 @@ fun AntSimulator() {
                 gridSize,
                 cellSize,
                 gridWidth,
-                ant.value,
+                ants,
                 foodSource.position,
                 nest.position,
                 pheromoneTrail
             )
             Spacer(modifier = Modifier.width(16.dp))
-            travelTimeHistogram(histogramState, stats.getAvgTravelTime(), binSize)
+            travelTimeHistogram(histogramState, stats.getAvgTravelTime(), binSize, gridWidth)
         }
     }
 }
@@ -129,7 +150,7 @@ fun antSimulationControlsAndStatistics(
     isRunning: Boolean,
     foodDelivered: Int,
     tripsCount: Int,
-    totalTravelTime: Long,
+    avgTravelTime: Long,
     onToggle: () -> Unit
 ) {
     Row(
@@ -151,7 +172,7 @@ fun antSimulationControlsAndStatistics(
 
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 16.dp)) {
             Text("Avg. Time:")
-            Text("${if (tripsCount > 0) totalTravelTime / tripsCount else 0} ms")
+            Text("${if (tripsCount > 0) avgTravelTime else 0} ms")
         }
     }
 }
@@ -161,7 +182,7 @@ fun antSimulationCanvas(
     gridSize: Int,
     cellSize: Dp,
     gridWidth: Float,
-    ant: Ant,
+    ants: List<Ant>,
     initialTarget: Offset,
     nest: Offset,
     pheromoneTrail: PheromoneTrail
@@ -175,7 +196,9 @@ fun antSimulationCanvas(
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawGrid(gridSize, cellSize)
             drawPheromones(pheromoneTrail.getPheromones())
-            drawAnt(cellSize, ant.position, ant.direction, ant.sightDistance, ant.fieldViewAngleRange)
+            ants.forEach { ant ->
+                drawAnt(cellSize, ant.position, ant.direction, ant.sightDistance, ant.fieldViewAngleRange)
+            }
             drawTarget(cellSize, initialTarget)
             drawNest(cellSize, nest)
         }
@@ -183,16 +206,19 @@ fun antSimulationCanvas(
 }
 
 @Composable
-fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize: Int) {
+fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize: Int, gridWidth: Float) {
     val maxCount = histogram.values.maxOrNull() ?: 1
     val minTime = histogram.keys.minOrNull() ?: 0L
     val maxTime = histogram.keys.maxOrNull() ?: 1L
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Canvas(modifier = Modifier.size(100.dp, 200.dp).border(1.dp, Color.Black)) {
+        Text("$minTime ms", color = Color.Black)
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Canvas(modifier = Modifier.size(100.dp, gridWidth.dp - 150.dp).border(1.dp, Color.Black)) {
             val barHeight = size.height / histogram.size
             val avgY = size.height * (avgTravelTime - minTime).toFloat() / (maxTime + binSize - minTime).toFloat()
 
@@ -201,7 +227,7 @@ fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize:
                 drawRect(
                     color = Color.Blue,
                     topLeft = Offset(0f, index * barHeight),
-                    size = Size(barWidth, barHeight - 2)
+                    size = Size(barWidth, max(barHeight - 2, 2f))
                 )
             }
 
@@ -213,12 +239,9 @@ fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize:
             )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-        Column {
-            Text("${minTime} ms", color = Color.Black)
-            Spacer(modifier = Modifier.height(160.dp))
-            Text("${maxTime + binSize} ms", color = Color.Black)
-        }
+        Text("${maxTime + binSize} ms", color = Color.Black)
     }
 }
+

@@ -346,4 +346,24 @@ class AntSimulationTest {
         assertNotNull(result.closest)
         assertEquals(Offset(10f, 0f), result.closest)
     }
+
+    @ParameterizedTest
+    @CsvSource(
+        "0.75, true, 90, 90, 90, 90, 90",
+        "0.75, true, 179.5, 180, 180.5",
+        "0.75, false, 271, 272, 273",
+        "0.75, false, 30, 40, 50, 60",
+        "0.75, true, 359.9, 360, 0.1",
+        "1.0, true, 89.9, 90, 90.1",
+        "0.75, false, empty"
+    )
+    fun testIsStuck(
+        tolerance: Float,
+        expected: Boolean,
+        angles: String
+    ) {
+        val directionHistory = if (angles == "empty") emptyList() else angles.split(", ").map { it.toFloat() }
+        val result = isStuck(directionHistory, tolerance)
+        assertEquals(expected, result)
+    }
 }

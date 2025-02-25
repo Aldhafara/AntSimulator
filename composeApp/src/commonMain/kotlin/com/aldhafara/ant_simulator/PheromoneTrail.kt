@@ -3,11 +3,10 @@ package com.aldhafara.ant_simulator
 import androidx.compose.ui.geometry.Offset
 
 class PheromoneTrail(
-    val decayTime: Long = 10000L
+    private val decayTime: Long = 5000L
 ) {
     private val pheromones = mutableListOf<Pheromone>()
-    var isPaused: Boolean = false
-        private set
+    private var isPaused: Boolean = false
 
     private var pauseTime: Long? = null
     private var pausedDuration: Long = 0

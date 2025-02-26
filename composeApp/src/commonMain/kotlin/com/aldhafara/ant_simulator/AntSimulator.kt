@@ -39,9 +39,11 @@ import kotlin.math.max
 import kotlin.random.Random
 
 @Composable
-fun AntSimulator() {
-    val gridSize = 100
+fun AntSimulator(sizeDp: Dp) {
+
     val cellSize = 5.dp
+    val gridSize = (sizeDp/cellSize).toInt()
+
     val gridWidth = gridSize * cellSize.value
     val binSize = 1000
     val clock: Clock = Clock.systemDefaultZone()
@@ -120,7 +122,7 @@ fun AntSimulator() {
             stats.getAvgTravelTime()
         ) { isRunning = !isRunning }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(1.dp))
 
         Row(
             horizontalArrangement = Arrangement.Center,
@@ -216,15 +218,17 @@ fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize:
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        Canvas(modifier = Modifier.size(100.dp, gridWidth.dp - 150.dp).border(1.dp, Color.Black)) {
-            val barHeight = size.height / histogram.size
+        val canvasHeight = (gridWidth.dp - 150.dp) - 50.dp
+
+        Canvas(modifier = Modifier.size(100.dp, canvasHeight).border(1.dp, Color.Black)) {
+            val barHeight = size.height.div(histogram.size)
             val avgY = size.height * (avgTravelTime - minTime).toFloat() / (maxTime + binSize - minTime).toFloat()
 
             histogram.entries.sortedBy { it.key }.forEachIndexed { index, entry ->
                 val barWidth = (entry.value.toFloat() / maxCount) * size.width
                 drawRect(
                     color = Color.Blue,
-                    topLeft = Offset(0f, index * barHeight),
+                    topLeft = Offset(0f, barHeight.times(index)),
                     size = Size(barWidth, max(barHeight - 2, 2f))
                 )
             }

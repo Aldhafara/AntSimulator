@@ -251,11 +251,11 @@ class AntSimulationTest {
         val fieldViewAngleRange = 90f
         val sightDistance = 10f
         val pheromones = listOf(
-            Pheromone(Offset(20f, 0f), 5f, System.currentTimeMillis()),
-            Pheromone(Offset(0f, 20f), 5f, System.currentTimeMillis())
+            Pheromone(Offset(20f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST),
+            Pheromone(Offset(0f, 20f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNull(result.strongest)
         assertNull(result.weakest)
@@ -270,10 +270,10 @@ class AntSimulationTest {
         val fieldViewAngleRange = 90f
         val sightDistance = 10f
         val pheromones = listOf(
-            Pheromone(Offset(5f, 0f), 5f, System.currentTimeMillis())
+            Pheromone(Offset(5f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.strongest)
         assertEquals(Offset(5f, 0f), result.strongest)
@@ -289,12 +289,12 @@ class AntSimulationTest {
         val fieldViewAngleRange = 90f
         val sightDistance = 10f
         val pheromones = listOf(
-            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis()),
-            Pheromone(Offset(7f, 0f), 10f, System.currentTimeMillis()),
-            Pheromone(Offset(9f, 0f), 2f, System.currentTimeMillis())
+            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST),
+            Pheromone(Offset(7f, 0f), 10f, System.currentTimeMillis(), TargetType.NEST),
+            Pheromone(Offset(9f, 0f), 2f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.strongest)
         assertEquals(Offset(7f, 0f), result.strongest)
@@ -316,12 +316,12 @@ class AntSimulationTest {
         val fieldViewAngleRange = 45f
         val sightDistance = 10f
         val pheromones = listOf(
-            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis()),
-            Pheromone(Offset(0f, 40f), 5f, System.currentTimeMillis()),
-            Pheromone(Offset(-3f, 0f), 5f, System.currentTimeMillis())
+            Pheromone(Offset(3f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST),
+            Pheromone(Offset(0f, 40f), 5f, System.currentTimeMillis(), TargetType.NEST),
+            Pheromone(Offset(-3f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.closest)
         assertEquals(Offset(3f, 0f), result.closest)
@@ -338,10 +338,10 @@ class AntSimulationTest {
         val fieldViewAngleRange = 90f
         val sightDistance = 10f
         val pheromones = listOf(
-            Pheromone(Offset(10f, 0f), 5f, System.currentTimeMillis())
+            Pheromone(Offset(10f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, pheromones)
+        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.closest)
         assertEquals(Offset(10f, 0f), result.closest)

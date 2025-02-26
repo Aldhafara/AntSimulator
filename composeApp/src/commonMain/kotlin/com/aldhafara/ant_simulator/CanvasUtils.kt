@@ -28,7 +28,7 @@ fun DrawScope.drawAnt(
 ) {
     val antRadius = cellSize.value / 4
     drawCircle(Color.Red, radius = antRadius, center = antPosition)
-    drawFieldOfView(antPosition, direction, sightDistance, fieldViewAngleRange)
+//    drawFieldOfView(antPosition, direction, sightDistance, fieldViewAngleRange)
 }
 
 fun DrawScope.drawTarget(cellSize: Dp, position: Offset) {
@@ -43,11 +43,19 @@ fun DrawScope.drawNest(cellSize: Dp, position: Offset) {
 
 fun DrawScope.drawPheromones(pheromones: List<Pheromone>) {
     pheromones.forEach {
-        drawCircle(
-            color = Color(0xFF53BB41).copy(alpha = it.strength),
-            radius = 3f,
-            center = it.position
-        )
+        if (it.type == TargetType.NEST) {
+            drawCircle(
+                color = Color(0xFF53BB41).copy(alpha = it.strength),
+                radius = 3f,
+                center = it.position
+            )
+        } else {
+            drawCircle(
+                color = Color(0xFFFF6165).copy(alpha = it.strength),
+                radius = 3f,
+                center = it.position
+            )
+        }
     }
 }
 

@@ -19,13 +19,13 @@ fun updateAntPosition(
     foodSource: Target,
     pheromones: List<Pheromone>
 ): Ant {
-    val chanceToIgnorePheromones = 15
+    val chanceToIgnorePheromones = 5
 
     // The chances below must add up to 100
-    val strongestChance = 80
-    val farthestChance = 7
-    val closestChance = 7
-    val weakestChance = 6
+    val strongestChance = 40
+    val farthestChance = 20
+    val closestChance = 0
+    val weakestChance = 40
 
     val minBound = cellSize / 2
     val maxBound = gridSize * cellSize - cellSize / 2
@@ -41,7 +41,7 @@ fun updateAntPosition(
         } else ant.currentTarget
 
         val pheromoneInfo = analyzePheromones(
-            ant.position, ant.direction, ant.fieldViewAngleRange, ant.sightDistance, pheromones
+            ant.position, ant.direction, ant.fieldViewAngleRange, ant.sightDistance, ant.currentTarget.type, pheromones
         )
 
         val antAngle = directionToAngle(ant.direction)
@@ -53,7 +53,7 @@ fun updateAntPosition(
         val newDirection = when {
             targetInSight -> offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
 
-            followChance < chanceToIgnorePheromones -> randomDirection
+            (followChance < chanceToIgnorePheromones || !pheromoneInfo.hasAnyValue()) -> randomDirection
 
             else -> {
                 val adjustedChance = followChance - chanceToIgnorePheromones
@@ -118,6 +118,7 @@ fun analyzePheromones(
     direction: Offset,
     fieldViewAngleRange: Float,
     sightDistance: Float,
+    targetType: TargetType,
     pheromones: List<Pheromone>
 ): PheromoneInfo {
     var strongest: Pair<Pheromone, Float>? = null
@@ -128,6 +129,8 @@ fun analyzePheromones(
     val epsilon = 1e-3f
 
     pheromones.forEach { pheromone ->
+        if (pheromone.type == targetType) return@forEach
+
         val distance = calculateDistance(position, pheromone.position)
 
         if (distance > sightDistance || distance < epsilon) return@forEach

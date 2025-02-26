@@ -85,12 +85,10 @@ fun AntSimulator() {
                             foodSource,
                             pheromoneTrail.getPheromones()
                         )
-                        if (previousTarget == TargetType.NEST) {
-                            val currentTime = System.currentTimeMillis()
-                            if (currentTime - ant.lastPheromoneTime >= ant.pheromoneInterval) {
-                                pheromoneTrail.addPheromone(ant.position, currentTime)
-                                ants[index] = ant.copy(lastPheromoneTime = currentTime)
-                            }
+                        val currentTime = Instant.now(clock).toEpochMilli()
+                        if (currentTime - ant.lastPheromoneTime >= ant.pheromoneInterval) {
+                            pheromoneTrail.addPheromone(ant.position, currentTime, previousTarget)
+                            ants[index] = ant.copy(lastPheromoneTime = currentTime)
                         }
                         val updated = stats.updateStatistics(
                             ants[index].currentTarget.type,

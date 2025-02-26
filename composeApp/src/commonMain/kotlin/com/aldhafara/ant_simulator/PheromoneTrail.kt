@@ -11,8 +11,8 @@ class PheromoneTrail(
     private var pauseTime: Long? = null
     private var pausedDuration: Long = 0
 
-fun addPheromone(position: Offset, currentTime: Long) {
-    pheromones.add(Pheromone(position, 1f, currentTime))
+fun addPheromone(position: Offset, currentTime: Long, type :TargetType) {
+    pheromones.add(Pheromone(position, 1f, currentTime, type))
 }
 
     fun decay() {

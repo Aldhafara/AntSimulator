@@ -19,7 +19,14 @@ fun updateAntPosition(
     foodSource: Target,
     pheromones: List<Pheromone>
 ): Ant {
-    val chance = 25f
+    val chanceToIgnorePheromones = 15
+
+    // The chances below must add up to 100
+    val strongestChance = 80
+    val farthestChance = 7
+    val closestChance = 7
+    val weakestChance = 6
+
     val minBound = cellSize / 2
     val maxBound = gridSize * cellSize - cellSize / 2
 
@@ -41,17 +48,24 @@ fun updateAntPosition(
         val targetPosition = if (ant.currentTarget.type == TargetType.FOOD) foodSource.position else nest.position
         val targetInSight = isTargetInSight(ant.position, targetPosition, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
 
+        val followChance = Random.nextFloat() * 100
+
         val newDirection = when {
             targetInSight -> offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
-            pheromoneInfo.hasAnyValue() && Random.nextFloat() >= chance / 100 -> {
+
+            followChance < chanceToIgnorePheromones -> randomDirection
+
+            else -> {
+                val adjustedChance = followChance - chanceToIgnorePheromones
+                val scaledChance = (0.7 * adjustedChance + 30)
+
                 when {
-                    pheromoneInfo.farthest != null -> directionToPheromone(pheromoneInfo.farthest)
-                    pheromoneInfo.strongest != null -> directionToPheromone(pheromoneInfo.strongest)
-                    pheromoneInfo.closest != null -> directionToPheromone(pheromoneInfo.closest)
-                    else -> pheromoneInfo.weakest?.let { directionToPheromone(it) } ?: randomDirection
-                }
+                    scaledChance < strongestChance -> pheromoneInfo.strongest?.let { directionToPheromone(it) }
+                    scaledChance < strongestChance + farthestChance -> pheromoneInfo.farthest?.let { directionToPheromone(it) }
+                    scaledChance < strongestChance + farthestChance + closestChance -> pheromoneInfo.closest?.let { directionToPheromone(it) }
+                    else -> pheromoneInfo.weakest?.let { directionToPheromone(it) }
+                } ?: randomDirection
             }
-            else -> randomDirection
         }
 
         return ant.copy(

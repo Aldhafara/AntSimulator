@@ -1,6 +1,7 @@
 package com.aldhafara.ant_simulator
 
 import androidx.compose.ui.geometry.Offset
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -11,6 +12,17 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+data class PheromoneDecisionConfig(
+    val chanceToIgnore: Float = 5f,
+// The chances below must add up to 100
+    val strongestChance: Float = 40f,
+    val farthestChance: Float = 20f,
+    val closestChance: Float = 0f,
+    val weakestChance: Float = 40f
+) {
+    val totalChance = strongestChance + farthestChance + closestChance + weakestChance
+}
+
 fun updateAntPosition(
     ant: Ant,
     cellSize: Float,
@@ -19,19 +31,14 @@ fun updateAntPosition(
     foodSource: Target,
     pheromones: List<Pheromone>
 ): Ant {
-    val chanceToIgnorePheromones = 5
-
-    // The chances below must add up to 100
-    val strongestChance = 40
-    val farthestChance = 20
-    val closestChance = 0
-    val weakestChance = 40
+    val newHistory = ArrayDeque(ant.directionHistory)
+    if (newHistory.size >= 25) newHistory.removeFirst()
+    newHistory.addLast(ant.currentAngle)
 
     val minBound = cellSize / 2
     val maxBound = gridSize * cellSize - cellSize / 2
 
     val potentialNewPosition = ant.position + (ant.direction * cellSize)
-    val newHistory = (ant.directionHistory + ant.currentAngle).takeLast(25)
 
     val randomDirection = getRandomDirectionInRange(ant.direction, ant.maxTurnAngle)
 
@@ -50,27 +57,26 @@ fun updateAntPosition(
 
         val followChance = Random.nextFloat() * 100
 
+        val config = PheromoneDecisionConfig()
+
+        val scaledChance = (100 - config.chanceToIgnore) / 100 * (followChance - config.chanceToIgnore) + config.chanceToIgnore
+
         val newDirection = when {
             targetInSight -> offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
 
-            (followChance < chanceToIgnorePheromones || !pheromoneInfo.hasAnyValue()) -> randomDirection
+            (followChance < config.chanceToIgnore || !pheromoneInfo.hasAnyValue()) -> randomDirection
 
-            else -> {
-                val adjustedChance = followChance - chanceToIgnorePheromones
-                val scaledChance = (0.7 * adjustedChance + 30)
-
-                when {
-                    scaledChance < strongestChance -> pheromoneInfo.strongest?.let { directionToPheromone(it) }
-                    scaledChance < strongestChance + farthestChance -> pheromoneInfo.farthest?.let { directionToPheromone(it) }
-                    scaledChance < strongestChance + farthestChance + closestChance -> pheromoneInfo.closest?.let { directionToPheromone(it) }
-                    else -> pheromoneInfo.weakest?.let { directionToPheromone(it) }
-                } ?: randomDirection
-            }
+            else -> when {
+                scaledChance < config.strongestChance -> pheromoneInfo.strongest?.let { directionToPheromone(it) }
+                scaledChance < config.strongestChance + config.farthestChance -> pheromoneInfo.farthest?.let { directionToPheromone(it) }
+                scaledChance < config.strongestChance + config.farthestChance + config.closestChance -> pheromoneInfo.closest?.let { directionToPheromone(it) }
+                else -> pheromoneInfo.weakest?.let { directionToPheromone(it) }
+            } ?: randomDirection
         }
 
         return ant.copy(
             position = ant.position + (newDirection * cellSize),
-            directionHistory = newHistory,
+            directionHistory = newHistory.toList(),
             direction = newDirection,
             currentAngle = directionToAngle(newDirection),
             currentTarget = newTarget
@@ -81,7 +87,7 @@ fun updateAntPosition(
 
         return ant.copy(
             position = (ant.position + (reflectedDirection * cellSize)).coerceIn(minBound, maxBound),
-            directionHistory = newHistory,
+            directionHistory = newHistory.toList(),
             direction = reflectedDirection,
             currentAngle = directionToAngle(reflectedDirection)
         )
@@ -121,49 +127,47 @@ fun analyzePheromones(
     targetType: TargetType,
     pheromones: List<Pheromone>
 ): PheromoneInfo {
-    var strongest: Pair<Pheromone, Float>? = null
-    var weakest: Pair<Pheromone, Float>? = null
-    var closest: Pair<Pheromone, Float>? = null
-    var farthest: Pair<Pheromone, Float>? = null
-
-    val epsilon = 1e-3f
+    var strongest: Pheromone? = null
+    var weakest: Pheromone? = null
+    var closest: Pheromone? = null
+    var farthest: Pheromone? = null
+    var minStrength = Float.MAX_VALUE
+    var maxStrength = Float.MIN_VALUE
+    var minDistance = Float.MAX_VALUE
+    var maxDistance = Float.MIN_VALUE
 
     pheromones.forEach { pheromone ->
         if (pheromone.type == targetType) return@forEach
 
         val distance = calculateDistance(position, pheromone.position)
+        if (distance > sightDistance) return@forEach
 
-        if (distance > sightDistance || distance < epsilon) return@forEach
+        val angle = directionToAngle(pheromone.position - position)
+        if (!angleIsInRange(angle, directionToAngle(direction), fieldViewAngleRange)) return@forEach
 
-        val targetAngleRad = atan2(pheromone.position.y - position.y, pheromone.position.x - position.x)
-        val targetAngle = Math.toDegrees(targetAngleRad.toDouble()).toFloat()
-        val normalizedTargetAngle = normalizeAngle(targetAngle)
-
-        val antAngle = directionToAngle(direction)
-        if (!angleIsInRange(normalizedTargetAngle, antAngle, fieldViewAngleRange)) return@forEach
-
-        if (strongest == null || pheromone.strength > strongest!!.first.strength) {
-            strongest = Pair(pheromone, distance)
+        if (pheromone.strength > maxStrength) {
+            strongest = pheromone
+            maxStrength = pheromone.strength
         }
-
-        if (weakest == null || pheromone.strength < weakest!!.first.strength) {
-            weakest = Pair(pheromone, distance)
+        if (pheromone.strength < minStrength) {
+            weakest = pheromone
+            minStrength = pheromone.strength
         }
-
-        if (closest == null || distance < closest!!.second) {
-            closest = Pair(pheromone, distance)
+        if (distance < minDistance) {
+            closest = pheromone
+            minDistance = distance
         }
-
-        if (farthest == null || distance > farthest!!.second) {
-            farthest = Pair(pheromone, distance)
+        if (distance > maxDistance) {
+            farthest = pheromone
+            maxDistance = distance
         }
     }
 
     return PheromoneInfo(
-        strongest = strongest?.first?.position?.relativeTo(position),
-        weakest = weakest?.first?.position?.relativeTo(position),
-        closest = closest?.first?.position?.relativeTo(position),
-        farthest = farthest?.first?.position?.relativeTo(position)
+        strongest?.position?.relativeTo(position),
+        weakest?.position?.relativeTo(position),
+        closest?.position?.relativeTo(position),
+        farthest?.position?.relativeTo(position)
     )
 }
 
@@ -280,11 +284,9 @@ fun reflect(direction: Offset, normal: Offset): Offset {
 }
 
 fun angleToDirection(angle: Float): Offset {
-    val angleInRadians = Math.toRadians(angle.toDouble()).toFloat()
-    return getOffsetFromAngle(angleInRadians)
+    val rad = angle * (PI.toFloat() / 180f)
+    return Offset(cos(rad), sin(rad))
 }
-
-private fun getOffsetFromAngle(targetAngle: Float) = Offset(cos(targetAngle), sin(targetAngle))
 
 fun Offset.coerceIn(minBound: Float, maxBound: Float): Offset {
     val clampedX = x.coerceIn(minBound, maxBound)

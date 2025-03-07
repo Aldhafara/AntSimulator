@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Clock
@@ -42,7 +43,7 @@ import kotlin.random.Random
 fun AntSimulator(sizeDp: Dp) {
 
     val cellSize = 5.dp
-    val gridSize = (sizeDp/cellSize).toInt()
+    val gridSize = (sizeDp / cellSize).toInt()
 
     val gridWidth = gridSize * cellSize.value
     val binSize = 1000
@@ -122,12 +123,11 @@ fun AntSimulator(sizeDp: Dp) {
             stats.getAvgTravelTime()
         ) { isRunning = !isRunning }
 
-        Spacer(modifier = Modifier.height(1.dp))
-
         Row(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Spacer(modifier = Modifier.width(16.dp))
             antSimulationCanvas(
                 gridSize,
                 cellSize,
@@ -138,8 +138,12 @@ fun AntSimulator(sizeDp: Dp) {
                 pheromoneTrail
             )
             Spacer(modifier = Modifier.width(16.dp))
+
+
             travelTimeHistogram(histogramState, stats.getAvgTravelTime(), binSize, gridWidth)
+            Spacer(modifier = Modifier.width(16.dp))
         }
+        Spacer(modifier = Modifier.width(16.dp))
     }
 }
 
@@ -204,46 +208,73 @@ fun antSimulationCanvas(
         }
     }
 }
-
 @Composable
-fun travelTimeHistogram(histogram: Map<Long, Int>, avgTravelTime: Long, binSize: Int, gridWidth: Float) {
+fun travelTimeHistogram(
+    histogram: Map<Long, Int>,
+    avgTravelTime: Long,
+    binSize: Int,
+    gridWidth: Float
+) {
     val maxCount = histogram.values.maxOrNull() ?: 1
     val minTime = histogram.keys.minOrNull() ?: 0L
     val maxTime = histogram.keys.maxOrNull() ?: 1L
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+    val density = LocalDensity.current
+
+    val textHeightSp = 25.sp
+    val spacer = 4.dp
+    val textHeightDp = with(density) { textHeightSp.toDp() }
+
+    val canvasHeightDp = with(density) { gridWidth.toDp() } - (textHeightDp + spacer) * 2
+
+    Box(
+        modifier = Modifier
+            .size(100.dp, with(density) { gridWidth.toDp() })
     ) {
-        Text("$minTime ms", color = Color.Black)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "$minTime ms",
+                lineHeight = textHeightSp,
+                color = Color.Black
+            )
+            Spacer(modifier = Modifier.height(spacer))
 
-        Spacer(modifier = Modifier.height(4.dp))
+            Canvas(
+                modifier = Modifier
+                    .size(100.dp, canvasHeightDp)
+                    .border(1.dp, Color.Black)
+            ) {
+                val canvasHeightPx = size.height
+                val barHeightPx = canvasHeightPx / histogram.size.toFloat()
+                val avgYPx = canvasHeightPx * (avgTravelTime - minTime).toFloat() /
+                        (maxTime + binSize - minTime).toFloat()
 
-        val canvasHeight = (gridWidth.dp - 150.dp) - 50.dp
+                histogram.entries.sortedBy { it.key }.forEachIndexed { index, entry ->
+                    val barWidthPx = (entry.value.toFloat() / maxCount) * size.width
+                    drawRect(
+                        color = Color.Blue,
+                        topLeft = Offset(0f, barHeightPx * index),
+                        size = Size(barWidthPx, max(barHeightPx - 2, 2f))
+                    )
+                }
 
-        Canvas(modifier = Modifier.size(100.dp, canvasHeight).border(1.dp, Color.Black)) {
-            val barHeight = size.height.div(histogram.size)
-            val avgY = size.height * (avgTravelTime - minTime).toFloat() / (maxTime + binSize - minTime).toFloat()
-
-            histogram.entries.sortedBy { it.key }.forEachIndexed { index, entry ->
-                val barWidth = (entry.value.toFloat() / maxCount) * size.width
-                drawRect(
-                    color = Color.Blue,
-                    topLeft = Offset(0f, barHeight.times(index)),
-                    size = Size(barWidth, max(barHeight - 2, 2f))
+                drawLine(
+                    color = Color.Red,
+                    start = Offset(0f, avgYPx),
+                    end = Offset(size.width, avgYPx),
+                    strokeWidth = 2f
                 )
             }
 
-            drawLine(
-                color = Color.Red,
-                start = Offset(0f, avgY),
-                end = Offset(size.width, avgY),
-                strokeWidth = 2f
+            Spacer(modifier = Modifier.height(spacer))
+
+            Text(
+                text = "${maxTime + binSize} ms",
+                lineHeight = textHeightSp,
+                color = Color.Black
             )
         }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text("${maxTime + binSize} ms", color = Color.Black)
     }
 }
-

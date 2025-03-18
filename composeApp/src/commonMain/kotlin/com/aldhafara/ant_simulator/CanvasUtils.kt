@@ -1,10 +1,11 @@
 package com.aldhafara.ant_simulator
 
+import androidx.compose.runtime.MutableState
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.geometry.Size
 import kotlin.math.atan2
 
 fun DrawScope.drawGrid(gridSize: Int, cellSize: Dp) {
@@ -26,8 +27,8 @@ fun DrawScope.drawAnt(
     sightDistance: Float,
     fieldViewAngleRange: Float
 ) {
-    val antRadius = cellSize.value / 4
-    drawCircle(Color.Red, radius = antRadius, center = antPosition)
+    val antRadius = cellSize.value / 2
+    drawCircle(Color.Black, radius = antRadius, center = antPosition)
 //    drawFieldOfView(antPosition, direction, sightDistance, fieldViewAngleRange)
 }
 
@@ -56,6 +57,19 @@ fun DrawScope.drawPheromones(pheromones: List<Pheromone>) {
                 center = it.position
             )
         }
+    }
+}
+
+fun DrawScope.drawObstacles(
+    obstacles: MutableState<Set<Offset>>,
+    cellSize: Dp
+) {
+    obstacles.value.forEach { pos ->
+        drawRect(
+            color = Color.Gray,
+            topLeft = pos,
+            size = Size(cellSize.toPx() + 1, cellSize.toPx() + 1)
+        )
     }
 }
 

@@ -17,6 +17,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +47,8 @@ import kotlin.random.Random
 
 @Composable
 fun AntSimulator(sizeDp: Dp) {
+
+    val obstacles = remember { mutableStateOf<Set<Offset>>(emptySet()) }
 
     val cellSize = 5.dp
     val gridSize = (sizeDp / cellSize).toInt()
@@ -62,10 +70,11 @@ fun AntSimulator(sizeDp: Dp) {
 
     val stats = remember { AntSimulationStats() }
     var histogramState by remember { mutableStateOf(stats.getHistogram(binSize)) }
+    val cellSizePx = with(LocalDensity.current) { cellSize.toPx() }
 
     LaunchedEffect(Unit) {
         repeat(numberOfAnts) {
-            ants.add(Ant(nest.position, getRandomDirection(), 30f, foodSource))
+            ants.add(Ant(nest.position, getRandomDirection(), Angle(30f), foodSource))
         }
     }
 
@@ -86,11 +95,16 @@ fun AntSimulator(sizeDp: Dp) {
                             gridSize,
                             nest,
                             foodSource,
-                            pheromoneTrail.getPheromones()
+                            pheromoneTrail.getPheromones(),
+                            obstacles.value
                         )
                         val currentTime = Instant.now(clock).toEpochMilli()
                         if (currentTime - ant.lastPheromoneTime >= ant.pheromoneInterval) {
-                            pheromoneTrail.addPheromone(ant.position, currentTime, previousTarget)
+                            pheromoneTrail.addPheromone(
+                                snapToGrid(ant.position, cellSizePx, previousTarget),
+                                currentTime,
+                                previousTarget
+                            )
                             ants[index] = ant.copy(lastPheromoneTime = currentTime)
                         }
                         val updated = stats.updateStatistics(
@@ -135,7 +149,8 @@ fun AntSimulator(sizeDp: Dp) {
                 ants,
                 foodSource.position,
                 nest.position,
-                pheromoneTrail
+                pheromoneTrail,
+                obstacles
             )
             Spacer(modifier = Modifier.width(16.dp))
 
@@ -189,17 +204,84 @@ fun antSimulationCanvas(
     ants: List<Ant>,
     initialTarget: Offset,
     nest: Offset,
-    pheromoneTrail: PheromoneTrail
+    pheromoneTrail: PheromoneTrail,
+    obstacles: MutableState<Set<Offset>>
 ) {
+    val density = LocalDensity.current
     Box(
         modifier = Modifier
-            .size(with(LocalDensity.current) { (gridWidth + 4).toDp() })
+            .size(with(density) { (gridWidth + 4).toDp() })
             .border(2.dp, Color.Black, RoundedCornerShape(4.dp))
             .padding(2.dp)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val position = event.changes.first().position
+                        when {
+                            event.type == PointerEventType.Press && event.buttons.isPrimaryPressed -> {
+                                obstacles.value += snapToGrid(position, cellSize, density)
+                            }
+
+                            event.type == PointerEventType.Press && event.buttons.isSecondaryPressed -> {
+                                obstacles.value -= snapToGrid(position, cellSize, density)
+                            }
+                        }
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    var pressStartTime = 0L
+                    var isLongPress = false
+                    val timeThreshold = 50
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val position = event.changes.first().position
+
+                        when {
+                            event.type == PointerEventType.Press -> {
+                                pressStartTime = System.currentTimeMillis()
+                                isLongPress = false
+                            }
+
+                            event.type == PointerEventType.Move && event.buttons.isPrimaryPressed -> {
+                                if (!isLongPress && System.currentTimeMillis() - pressStartTime > timeThreshold) {
+                                    isLongPress = true
+                                }
+
+                                if (isLongPress && event.buttons.isPrimaryPressed) {
+                                    if (position.x in 0f..gridWidth && position.y in 0f..gridWidth) {
+                                        obstacles.value += snapToGridWithNeighbors(position, cellSize, density)
+                                    }
+                                }
+                            }
+
+                            event.type == PointerEventType.Move && event.buttons.isSecondaryPressed -> {
+                                if (!isLongPress && System.currentTimeMillis() - pressStartTime > timeThreshold) {
+                                    isLongPress = true
+                                }
+
+                                if (isLongPress && event.buttons.isSecondaryPressed) {
+                                    obstacles.value -= snapToGridWithNeighbors(position, cellSize, density)
+                                }
+                            }
+
+                            event.type == PointerEventType.Release -> {
+                                pressStartTime = 0L
+                                isLongPress = false
+                            }
+                        }
+                    }
+                }
+            }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawGrid(gridSize, cellSize)
             drawPheromones(pheromoneTrail.getPheromones())
+            drawObstacles(obstacles, cellSize)
+
             ants.forEach { ant ->
                 drawAnt(cellSize, ant.position, ant.direction, ant.sightDistance, ant.fieldViewAngleRange)
             }
@@ -208,6 +290,45 @@ fun antSimulationCanvas(
         }
     }
 }
+
+fun snapToGrid(offset: Offset, cellSize: Dp, density: Density): Offset {
+    val cellSizePx = with(density) { cellSize.toPx() }
+    return Offset(
+        (offset.x / cellSizePx).toInt() * cellSizePx,
+        (offset.y / cellSizePx).toInt() * cellSizePx
+    )
+}
+
+fun snapToGridWithNeighbors(offset: Offset, cellSize: Dp, density: Density): Set<Offset> {
+    val cellSizePx = with(density) { cellSize.toPx() }
+
+    val baseX = (offset.x / cellSizePx).toInt() * cellSizePx
+    val baseY = (offset.y / cellSizePx).toInt() * cellSizePx
+
+    val neighbors = setOf(
+        Offset(baseX, baseY),
+        Offset(baseX - cellSizePx, baseY),
+        Offset(baseX + cellSizePx, baseY),
+        Offset(baseX, baseY - cellSizePx),
+        Offset(baseX, baseY + cellSizePx),
+        Offset(baseX - cellSizePx, baseY - cellSizePx),
+        Offset(baseX + cellSizePx, baseY - cellSizePx),
+        Offset(baseX - cellSizePx, baseY + cellSizePx),
+        Offset(baseX + cellSizePx, baseY + cellSizePx)
+    )
+
+    return neighbors
+}
+
+
+fun snapToGrid(offset: Offset, cellSizePx: Float, targetType: TargetType): Offset {
+    val typeOffset = if (targetType == TargetType.FOOD) -1 else 1
+    return Offset(
+        (offset.x / cellSizePx).toInt() * cellSizePx + typeOffset,
+        (offset.y / cellSizePx).toInt() * cellSizePx + typeOffset
+    )
+}
+
 @Composable
 fun travelTimeHistogram(
     histogram: Map<Long, Int>,

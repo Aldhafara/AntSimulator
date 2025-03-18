@@ -3,6 +3,7 @@ package com.aldhafara.ant_simulator
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -15,10 +16,10 @@ import kotlin.random.Random
 data class PheromoneDecisionConfig(
     val chanceToIgnore: Float = 5f,
 // The chances below must add up to 100
-    val strongestChance: Float = 40f,
-    val farthestChance: Float = 20f,
+    val strongestChance: Float = 0f,
+    val farthestChance: Float = 0f,
     val closestChance: Float = 0f,
-    val weakestChance: Float = 40f
+    val weakestChance: Float = 100f
 ) {
     val totalChance = strongestChance + farthestChance + closestChance + weakestChance
 }
@@ -29,7 +30,8 @@ fun updateAntPosition(
     gridSize: Int,
     nest: Target,
     foodSource: Target,
-    pheromones: List<Pheromone>
+    pheromones: List<Pheromone>,
+    obstacles: Set<Offset>
 ): Ant {
     val newHistory = ArrayDeque(ant.directionHistory)
     if (newHistory.size >= 25) newHistory.removeFirst()
@@ -53,23 +55,51 @@ fun updateAntPosition(
 
         val antAngle = directionToAngle(ant.direction)
         val targetPosition = if (ant.currentTarget.type == TargetType.FOOD) foodSource.position else nest.position
-        val targetInSight = isTargetInSight(ant.position, targetPosition, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
+        val targetInSight =
+            isTargetInSight(ant.position, targetPosition, antAngle, ant.fieldViewAngleRange, ant.sightDistance)
+        val obstacleInSight = if (obstacles.isEmpty()) false else areObstaclesInSight(
+            ant.position,
+            obstacles,
+            antAngle,
+            ant.fieldViewAngleRange,
+            ant.sightDistance
+        )
 
         val followChance = Random.nextFloat() * 100
 
         val config = PheromoneDecisionConfig()
 
-        val scaledChance = (100 - config.chanceToIgnore) / 100 * (followChance - config.chanceToIgnore) + config.chanceToIgnore
+        val scaledChance =
+            (100 - config.chanceToIgnore) / 100 * (followChance - config.chanceToIgnore) + config.chanceToIgnore
 
         val newDirection = when {
-            targetInSight -> offset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
+            targetInSight -> getOffset(antAngle, directionToAngle(newTarget.position - ant.position), ant.maxTurnAngle)
+            obstacleInSight -> offsetFromObstacles(
+                ant.position,
+                ant.currentAngle,
+                obstacles,
+                ant.maxTurnAngle,
+                ant.sightDistance,
+                ant.fieldViewAngleRange,
+                cellSize
+            )
 
             (followChance < config.chanceToIgnore || !pheromoneInfo.hasAnyValue()) -> randomDirection
 
             else -> when {
                 scaledChance < config.strongestChance -> pheromoneInfo.strongest?.let { directionToPheromone(it) }
-                scaledChance < config.strongestChance + config.farthestChance -> pheromoneInfo.farthest?.let { directionToPheromone(it) }
-                scaledChance < config.strongestChance + config.farthestChance + config.closestChance -> pheromoneInfo.closest?.let { directionToPheromone(it) }
+                scaledChance < config.strongestChance + config.farthestChance -> pheromoneInfo.farthest?.let {
+                    directionToPheromone(
+                        it
+                    )
+                }
+
+                scaledChance < config.strongestChance + config.farthestChance + config.closestChance -> pheromoneInfo.closest?.let {
+                    directionToPheromone(
+                        it
+                    )
+                }
+
                 else -> pheromoneInfo.weakest?.let { directionToPheromone(it) }
             } ?: randomDirection
         }
@@ -94,8 +124,8 @@ fun updateAntPosition(
     }
 }
 
-fun isStuck(directionHistory: List<Float>, tolerance: Float = 0.75f): Boolean {
-    val averageDirection = directionHistory.average().toFloat()
+fun isStuck(directionHistory: List<Angle>, tolerance: Float = 0.75f): Boolean {
+    val averageDirection = directionHistory.map { it.normalizedValue }.average().toFloat()
     val criticalAngles = listOf(0f, 90f, 180f, 270f, 360f)
 
     return criticalAngles.any { angle ->
@@ -149,7 +179,7 @@ fun analyzePheromones(
             strongest = pheromone
             maxStrength = pheromone.strength
         }
-        if (pheromone.strength < minStrength) {
+        if (pheromone.strength < minStrength && pheromone.strength >= 0.25f) {
             weakest = pheromone
             minStrength = pheromone.strength
         }
@@ -182,10 +212,22 @@ fun calculateDistance(
     targetPosition: Offset
 ) = sqrt((position.x - targetPosition.x).pow(2) + (position.y - targetPosition.y).pow(2))
 
+fun areObstaclesInSight(
+    antPosition: Offset,
+    targetPositions: Set<Offset>,
+    targetAngle: Angle,
+    fieldViewAngleRange: Float,
+    sightDistance: Float
+): Boolean {
+    return targetPositions.any { targetPosition ->
+        isTargetInSight(antPosition, targetPosition, targetAngle, fieldViewAngleRange, sightDistance)
+    }
+}
+
 fun isTargetInSight(
     antPosition: Offset,
     targetPosition: Offset,
-    targetAngle: Float,
+    targetAngle: Angle,
     fieldViewAngleRange: Float,
     sightDistance: Float
 ): Boolean {
@@ -193,30 +235,122 @@ fun isTargetInSight(
             angleIsInRange(directionToAngle(targetPosition - antPosition), targetAngle, fieldViewAngleRange)
 }
 
-fun offset(
-    antAngle: Float,
-    targetAngle: Float,
+fun offsetFromObstacles(
+    antPosition: Offset,
+    antCurrentAngle: Angle,
+    obstacles: Set<Offset>,
+    maxTurnAngle: Float,
+    sightDistance: Float,
+    fieldViewAngleRange: Float,
+    cellSize: Float
+): Offset {
+
+    val obstaclesInSight = obstacles
+        .map { it to antPosition.getDistanceTo(it) }
+        .filter { (_, distance) -> distance < sightDistance }
+
+    val ranges = obstaclesInSight.map { (obstacle, distance) ->
+        val directionAngle = directionToAngle(obstacle - antPosition)
+        val angularSize = angularSize(cellSize * 2, distance)
+        AngleRange(
+            Angle(directionAngle.normalizedValue - angularSize),
+            Angle(directionAngle.normalizedValue + angularSize)
+        )
+    }
+
+    val allowRanges = calculateRemainingAngleRange(ranges, fieldViewAngleRange, antCurrentAngle)
+
+    if (allowRanges.isEmpty()) {
+        val sortedObstacles = obstaclesInSight.sortedBy { it.second }
+        val closestObstacle = sortedObstacles.firstOrNull()
+        val farthestObstacle = sortedObstacles.lastOrNull()
+
+        closestObstacle?.second
+            ?.takeIf { it <= cellSize * 3 }
+            ?.let { return angleToDirection(antCurrentAngle.normalizedValue + 180) }
+
+        farthestObstacle?.let { (obstacle, _) ->
+            val angle = directionToAngle(antPosition - obstacle)
+            return getOffset(antCurrentAngle, angle, maxTurnAngle)
+        }
+    }
+
+    findWidestRange(allowRanges)
+        ?.let { return getOffset(antCurrentAngle, getMidValue(it), maxTurnAngle) }
+
+    return angleToDirection(antCurrentAngle.normalizedValue)
+}
+
+fun findWidestRange(offsets: List<AngleRange>): AngleRange? {
+    return offsets.maxByOrNull { it.right.getValue() - it.left.getValue() }
+}
+
+fun getMidValue(offset: AngleRange): Angle {
+    return Angle((offset.left.getValue() + offset.right.getValue()) / 2)
+}
+
+fun calculateRemainingAngleRange(
+    exclusions: List<AngleRange>,
+    fieldViewAngleRange: Float,
+    antAngle: Angle
+): List<AngleRange> {
+    val mainRange = AngleRange(antAngle.minus(fieldViewAngleRange / 2), antAngle.plus(fieldViewAngleRange / 2))
+    var remainingRanges = listOf(mainRange)
+
+    for (exclusion in exclusions) {
+        val newRanges = mutableListOf<AngleRange>()
+
+        for (range in remainingRanges) {
+            if (exclusion.right.getValue() <= range.left.getValue() || exclusion.left.getValue() >= range.right.getValue()) {
+                newRanges.add(range)
+            } else {
+                if (exclusion.left.getValue() > range.left.getValue()) {
+                    newRanges.add(AngleRange(range.left, exclusion.left))
+                }
+                if (exclusion.right.getValue() < range.right.getValue()) {
+                    newRanges.add(AngleRange(exclusion.right, range.right))
+                }
+            }
+        }
+        remainingRanges = newRanges
+    }
+
+    return remainingRanges
+}
+
+fun Offset.getDistanceTo(other: Offset): Float {
+    return sqrt((this.x - other.x).pow(2) + (this.y - other.y).pow(2))
+}
+
+fun angularSize(diameter: Float, distance: Float): Float {
+    return Math.toDegrees((2 * atan((sqrt(2.0) * diameter / 2) / distance))).toFloat()
+}
+
+fun getOffset(
+    antAngle: Angle,
+    targetAngle: Angle,
     maxTurnAngle: Float
 ): Offset {
-    val angleDiff = angleDifference(antAngle, targetAngle)
+    val angleDiff = angularDistance(antAngle, targetAngle)
 
     if (abs(angleDiff) <= (maxTurnAngle / 2)) {
         return Offset(
-            cos(Math.toRadians(targetAngle.toDouble())).toFloat(),
-            sin(Math.toRadians(targetAngle.toDouble())).toFloat()
+            cos(Math.toRadians(targetAngle.normalizedValue.toDouble())).toFloat(),
+            sin(Math.toRadians(targetAngle.normalizedValue.toDouble())).toFloat()
         )
     } else {
         val newAngle = antAngle + sign(angleDiff) * (maxTurnAngle / 2)
         return Offset(
-            cos(Math.toRadians(newAngle.toDouble())).toFloat(),
-            sin(Math.toRadians(newAngle.toDouble())).toFloat()
+            cos(Math.toRadians(newAngle.normalizedValue.toDouble())).toFloat(),
+            sin(Math.toRadians(newAngle.normalizedValue.toDouble())).toFloat()
         )
     }
 }
 
-fun angleDifference(angle1: Float, angle2: Float): Float {
-    var diff = normalizeAngle(angle2 - angle1)
+fun angularDistance(angle1: Angle, angle2: Angle): Float {
+    var diff = Angle(angle2.getValue() - angle1.getValue()).normalizedValue
     if (diff > 180) diff -= 360
+    if (diff == -0f) diff = 0f
     return diff
 }
 
@@ -226,20 +360,20 @@ private fun getRandomDirectionInRange(
 ): Offset {
     val baseAngle = directionToAngle(antDirection)
     val randomOffset = Random.nextFloat() * angleRange * 2 - angleRange
-    val randomAngle = normalizeAngle(baseAngle + randomOffset)
+    val randomAngle = Angle(baseAngle.normalizedValue + randomOffset)
 
-    return angleToDirection(randomAngle)
+    return angleToDirection(randomAngle.normalizedValue)
 }
 
-fun angleIsInRange(angle: Float, previousDirection: Float, fieldViewAngleRange: Float): Boolean {
+fun angleIsInRange(angle: Angle, previousDirection: Angle, fieldViewAngleRange: Float): Boolean {
     val halfRange = fieldViewAngleRange / 2
-    val minAngle = normalizeAngle(previousDirection - halfRange)
-    val maxAngle = normalizeAngle(previousDirection + halfRange)
+    val minAngle = normalizeAngle(previousDirection.normalizedValue - halfRange)
+    val maxAngle = normalizeAngle(previousDirection.normalizedValue + halfRange)
 
     return if (minAngle < maxAngle) {
-        angle in minAngle..maxAngle
+        angle.normalizedValue in minAngle..maxAngle
     } else {
-        angle in minAngle..360F || angle in 0f..maxAngle
+        angle.normalizedValue in minAngle..360F || angle.normalizedValue in 0f..maxAngle
     }
 }
 
@@ -248,9 +382,9 @@ fun isNearEdge(position: Offset, minBound: Float, maxBound: Float, threshold: Fl
             position.y <= minBound + threshold || position.y >= maxBound - threshold
 }
 
-fun directionToAngle(direction: Offset): Float {
+fun directionToAngle(direction: Offset): Angle {
     val angle = Math.toDegrees(atan2(direction.y.toDouble(), direction.x.toDouble())).toFloat()
-    return normalizeAngle(angle)
+    return Angle(normalizeAngle(angle))
 }
 
 fun normalizeAngle(angle: Float): Float {

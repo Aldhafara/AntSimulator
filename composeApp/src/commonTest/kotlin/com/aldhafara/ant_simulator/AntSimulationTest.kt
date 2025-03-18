@@ -30,10 +30,10 @@ class AntSimulationTest {
 
     @Test
     fun `should convert direction vector to angle correctly`() {
-        assertEquals(0f, directionToAngle(Offset(1f, 0f)), 0.01f)
-        assertEquals(90f, directionToAngle(Offset(0f, 1f)), 0.01f)
-        assertEquals(180f, directionToAngle(Offset(-1f, 0f)), 0.01f)
-        assertEquals(270f, directionToAngle(Offset(0f, -1f)), 0.01f)
+        assertEquals(0f, directionToAngle(Offset(1f, 0f)).normalizedValue, 0.01f)
+        assertEquals(90f, directionToAngle(Offset(0f, 1f)).normalizedValue, 0.01f)
+        assertEquals(180f, directionToAngle(Offset(-1f, 0f)).normalizedValue, 0.01f)
+        assertEquals(270f, directionToAngle(Offset(0f, -1f)).normalizedValue, 0.01f)
     }
 
     @Test
@@ -69,11 +69,11 @@ class AntSimulationTest {
     fun `should update ant position correctly`() {
         val currentTarget = Target(Offset(100f, 100f), TargetType.FOOD)
         val nest = Target(Offset(1f, 1f), TargetType.NEST)
-        val ant = Ant(Offset(50f, 50f), Offset(1f, 0f), 0f, currentTarget)
+        val ant = Ant(Offset(50f, 50f), Offset(1f, 0f), Angle(0f), currentTarget)
         val gridSize = 10
         val cellSize = 10f
 
-        val newPosition = updateAntPosition(ant, cellSize, gridSize, nest, currentTarget, emptyList())
+        val newPosition = updateAntPosition(ant, cellSize, gridSize, nest, currentTarget, emptyList(), emptySet())
 
         assertNotEquals(ant.position, newPosition)
     }
@@ -101,8 +101,8 @@ class AntSimulationTest {
     }
 
     @Test
-    fun `should calculate positive angle difference`() {
-        val result = angleDifference(30f, 60f)
+    fun `should calculate positive angular distance`() {
+        val result = angularDistance(Angle(30f), Angle(60f))
         assertEquals(30f, result)
     }
 
@@ -128,50 +128,82 @@ class AntSimulationTest {
         maxTurnAngle: Float,
         expectedAngle: Float
     ) {
-        val result = offset(antAngle, targetAngle, maxTurnAngle)
+        val result = getOffset(Angle(antAngle), Angle(targetAngle), maxTurnAngle)
         val actualAngle = directionToAngle(result)
-        assertEquals(expectedAngle, actualAngle, 0.01f)
+        assertEquals(expectedAngle, actualAngle.normalizedValue, 0.01f)
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "0, 20, 350",
+        "90, 20, 270",
+        "45, 20, 225",
+        "180, 20, 190",
+        "270, 20, 270",
+
+        "0, 5, 0",
+        "90, 5, 90",
+        "45, 5, 45",
+        "180, 5, 180",
+        "270, 5, 270"
+    )
+    fun `should calculate offsetFromObstacles and turn`(
+        antAngle: Float,
+        sightDistance: Float,
+        expectedAngle: Float
+    ) {
+        val position = Offset(10f, 0f)
+        val obstacles = setOf(
+            Offset(0f, 10f),
+            Offset(5f, 10f),
+            Offset(10f, 10f),
+            Offset(15f, 10f),
+            Offset(20f, 10f)
+        )
+        val result = offsetFromObstacles(position, Angle(antAngle), obstacles, 20f, sightDistance, 90f, 5f)
+        val actualAngle = directionToAngle(result)
+        assertEquals(expectedAngle, actualAngle.normalizedValue, 0.01f)
     }
 
     @Test
-    fun `should calculate negative angle difference`() {
-        val result = angleDifference(60f, 30f)
+    fun `should calculate negative angular distance`() {
+        val result = angularDistance(Angle(60f), Angle(30f))
         assertEquals(-30f, result)
     }
 
     @Test
-    fun `should handle angle difference over 180 degrees`() {
-        val result = angleDifference(350f, 10f)
+    fun `should handle angular distance over 180 degrees`() {
+        val result = angularDistance(Angle(350f), Angle(10f))
         assertEquals(20f, result)
     }
 
     @Test
-    fun `should handle angle difference under -180 degrees`() {
-        val result = angleDifference(10f, 350f)
+    fun `should handle angular distance under -180 degrees`() {
+        val result = angularDistance(Angle(10f), Angle(350f))
         assertEquals(-20f, result)
     }
 
     @Test
     fun `should normalize 180-degree difference`() {
-        val result = angleDifference(150f, 330f)
+        val result = angularDistance(Angle(150f), Angle(330f))
         assertEquals(180f, result)
     }
 
     @Test
     fun `should return zero for identical angles`() {
-        val result = angleDifference(45f, 45f)
+        val result = angularDistance(Angle(45f), Angle(45f))
         assertEquals(0f, result)
     }
 
     @Test
     fun `should return zero for 0 and 360 degrees`() {
-        val result = angleDifference(0f, 360f)
+        val result = angularDistance(Angle(0f), Angle(360f))
         assertEquals(0f, result)
     }
 
     @Test
     fun `should return zero for 180 and -180 degrees`() {
-        val result = angleDifference(180f, -180f)
+        val result = angularDistance(Angle(180f), Angle(-180f))
         assertEquals(0f, result)
     }
 
@@ -204,7 +236,7 @@ class AntSimulationTest {
         fieldViewAngleRange: Float,
         expected: Boolean
     ) {
-        val result = angleIsInRange(angle, previousDirection, fieldViewAngleRange)
+        val result = angleIsInRange(Angle(angle), Angle(previousDirection), fieldViewAngleRange)
         if (expected) {
             assertTrue(result)
         } else {
@@ -255,7 +287,8 @@ class AntSimulationTest {
             Pheromone(Offset(0f, 20f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
+        val result =
+            analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNull(result.strongest)
         assertNull(result.weakest)
@@ -273,7 +306,8 @@ class AntSimulationTest {
             Pheromone(Offset(5f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
+        val result =
+            analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.strongest)
         assertEquals(Offset(5f, 0f), result.strongest)
@@ -294,7 +328,8 @@ class AntSimulationTest {
             Pheromone(Offset(9f, 0f), 2f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
+        val result =
+            analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.strongest)
         assertEquals(Offset(7f, 0f), result.strongest)
@@ -321,7 +356,8 @@ class AntSimulationTest {
             Pheromone(Offset(-3f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
+        val result =
+            analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.closest)
         assertEquals(Offset(3f, 0f), result.closest)
@@ -341,7 +377,8 @@ class AntSimulationTest {
             Pheromone(Offset(10f, 0f), 5f, System.currentTimeMillis(), TargetType.NEST)
         )
 
-        val result = analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
+        val result =
+            analyzePheromones(position, direction, fieldViewAngleRange, sightDistance, TargetType.FOOD, pheromones)
 
         assertNotNull(result.closest)
         assertEquals(Offset(10f, 0f), result.closest)
@@ -362,7 +399,7 @@ class AntSimulationTest {
         expected: Boolean,
         angles: String
     ) {
-        val directionHistory = if (angles == "empty") emptyList() else angles.split(", ").map { it.toFloat() }
+        val directionHistory = if (angles == "empty") emptyList() else angles.split(", ").map { Angle(it.toFloat()) }
         val result = isStuck(directionHistory, tolerance)
         assertEquals(expected, result)
     }

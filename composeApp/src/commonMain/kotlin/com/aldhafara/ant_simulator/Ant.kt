@@ -8,9 +8,9 @@ import java.time.Clock
 data class Ant(
     var position: Offset,
     var direction: Offset,
-    var currentAngle: Float,
+    var currentAngle: Angle,
     val currentTarget: Target,
-    val directionHistory: List<Float> = emptyList(),
+    val directionHistory: List<Angle> = emptyList(),
     var fieldViewAngleRange: Float = 90f,
     var maxTurnAngle: Float = 10f,
     var sightDistance: Float = 50f,
